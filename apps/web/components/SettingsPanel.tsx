@@ -122,7 +122,7 @@ export default function SettingsPanel() {
   return (
     <div className="space-y-4">
       {/* 授权码 */}
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-1 text-sm font-semibold text-gray-900">授权码</h2>
         <p className="mb-3 text-xs text-gray-500">每个授权码最多绑定 3 个设备，绑定后不可解绑</p>
         <div className="space-y-3">
@@ -158,7 +158,7 @@ export default function SettingsPanel() {
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-900">AI 供应商</h2>
         <p className="mb-3 text-xs text-gray-500">点击展开配置，API Key 仅保存在本地浏览器，不会上传</p>
         <div className="space-y-2">
@@ -241,7 +241,7 @@ export default function SettingsPanel() {
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-1 text-sm font-semibold text-gray-900">费用估算</h2>
         <p className="mb-3 text-xs text-gray-500">配置模型单价后，生成按钮会实时显示预估费用（仅供参考，实际以供应商计费为准）</p>
         <div className="space-y-3">
@@ -271,7 +271,7 @@ export default function SettingsPanel() {
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-900">关于</h2>
         <div className="space-y-2 text-xs text-gray-500">
           <p>核心引擎版本：v1.0.0</p>

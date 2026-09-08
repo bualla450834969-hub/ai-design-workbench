@@ -138,7 +138,7 @@ export default function ResultsPanel({ cards, batchGroups, isGenerating, context
               return (
               <div
                 key={card.id}
-                className={`overflow-hidden rounded-2xl bg-white shadow-sm transition-all ${
+                className={`glass-card overflow-hidden rounded-2xl transition-all ${
                   compareMode ? "cursor-pointer" : ""
                 } ${isSelected ? "ring-2 ring-brand-500 ring-offset-2" : ""}`}
                 onClick={() => compareMode && toggleCompareSelect(card.id)}

@@ -89,7 +89,7 @@ export default function FavoritesPanel() {
         {favorites.map((card) => (
           <div
             key={card.id}
-            className="overflow-hidden rounded-2xl bg-white shadow-sm"
+            className="glass-card overflow-hidden rounded-2xl"
           >
             {card.imageUrl && (
               <div

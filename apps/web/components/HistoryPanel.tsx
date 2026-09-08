@@ -69,7 +69,7 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
         {records.map((record) => {
           const isExpanded = expandedId === record.id;
           return (
-            <div key={record.id} className="overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div key={record.id} className="glass-card overflow-hidden rounded-2xl">
               <button
                 onClick={() => setExpandedId(isExpanded ? null : record.id)}
                 className="flex w-full items-center gap-3 p-3 text-left hover:bg-gray-50"
@@ -181,7 +181,7 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
                   {/* 生成结果 */}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {record.cards.map((card, idx) => (
-                      <div key={idx} className="overflow-hidden rounded-lg bg-white shadow-sm">
+                      <div key={idx} className="glass-card overflow-hidden rounded-lg">
                         {card.imageUrl ? (
                           <div
                             className="aspect-square w-full cursor-zoom-in overflow-hidden"

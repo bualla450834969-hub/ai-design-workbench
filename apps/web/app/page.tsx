@@ -38,51 +38,68 @@ export default function HomePage() {
 
   return (
     <ToastProvider>
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       <AppNavigation activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <main className="pb-20 xl:pl-56">
-        <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur-lg xl:hidden">
-          <div className="flex h-14 items-center justify-center px-4">
-            <h1 className="text-base font-semibold text-gray-900">
-              {activeTab === "generate" && "新建生成"}
-              {activeTab === "results" && "生成结果"}
-              {activeTab === "history" && "历史记录"}
-              {activeTab === "favorites" && "我的收藏"}
-              {activeTab === "settings" && "设置"}
-            </h1>
+      <main className="pb-24 xl:pl-72">
+        {/* 移动端顶部 Header - 玻璃拟态 */}
+        <header className="sticky top-0 z-40 xl:hidden">
+          <div className="mx-3 mt-3 rounded-2xl bg-white/70 backdrop-blur-xl border border-white/50 shadow-md">
+            <div className="flex h-12 items-center justify-center px-4">
+              <h1 className="text-base font-semibold bg-gradient-to-r from-indigo-600 to-pink-600 bg-clip-text text-transparent">
+                {activeTab === "generate" && "新建生成"}
+                {activeTab === "results" && "生成结果"}
+                {activeTab === "history" && "历史记录"}
+                {activeTab === "favorites" && "我的收藏"}
+                {activeTab === "settings" && "设置"}
+              </h1>
+            </div>
           </div>
         </header>
 
-        <div className="mx-auto max-w-3xl px-4 py-6 xl:max-w-5xl xl:py-8">
+        <div className="mx-auto max-w-3xl px-4 py-5 xl:max-w-5xl xl:py-8 xl:pr-8">
           {activeTab === "generate" && (
-            <GeneratePanel
-              generation={generation}
-              setGeneration={setGeneration}
-              onComplete={handleGenerationComplete}
-              onBatchComplete={handleBatchComplete}
-              pendingConfig={pendingConfig}
-              onConfigApplied={() => setPendingConfig(null)}
-            />
+            <div className="animate-fade-in-up">
+              <GeneratePanel
+                generation={generation}
+                setGeneration={setGeneration}
+                onComplete={handleGenerationComplete}
+                onBatchComplete={handleBatchComplete}
+                pendingConfig={pendingConfig}
+                onConfigApplied={() => setPendingConfig(null)}
+              />
+            </div>
           )}
           {activeTab === "results" && (
-            <ResultsPanel
-              cards={generation.cards}
-              batchGroups={batchResults}
-              isGenerating={generation.isGenerating}
-              context={generation.context}
-            />
+            <div className="animate-fade-in-up">
+              <ResultsPanel
+                cards={generation.cards}
+                batchGroups={batchResults}
+                isGenerating={generation.isGenerating}
+                context={generation.context}
+              />
+            </div>
           )}
           {activeTab === "history" && (
-            <HistoryPanel
-              onReuseConfig={(config) => {
-                setPendingConfig(config);
-                setActiveTab("generate");
-              }}
-            />
+            <div className="animate-fade-in-up">
+              <HistoryPanel
+                onReuseConfig={(config) => {
+                  setPendingConfig(config);
+                  setActiveTab("generate");
+                }}
+              />
+            </div>
           )}
-          {activeTab === "favorites" && <FavoritesPanel />}
-          {activeTab === "settings" && <SettingsPanel />}
+          {activeTab === "favorites" && (
+            <div className="animate-fade-in-up">
+              <FavoritesPanel />
+            </div>
+          )}
+          {activeTab === "settings" && (
+            <div className="animate-fade-in-up">
+              <SettingsPanel />
+            </div>
+          )}
         </div>
       </main>
     </div>

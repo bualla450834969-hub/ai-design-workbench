@@ -608,15 +608,15 @@ export default function GeneratePanel({
   return (
     <div className="space-y-5">
       {/* 应用模式 Tab */}
-      <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="glass-card flex gap-1 rounded-2xl p-1.5">
         {APPLICATION_MODES.map((mode) => (
           <button
             key={mode.value}
             onClick={() => setApplicationMode(mode.value)}
-            className={`flex-1 rounded-lg px-3 py-2.5 text-center transition-all ${
+            className={`flex-1 rounded-xl px-3 py-2.5 text-center transition-all duration-300 ${
               applicationMode === mode.value
-                ? "bg-white text-brand-700 shadow-sm font-semibold"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-gradient-to-r from-indigo-500 to-pink-500 text-white shadow-md font-semibold"
+                : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
             }`}
           >
             <div className="text-xs">{mode.label}</div>
@@ -625,7 +625,7 @@ export default function GeneratePanel({
       </div>
 
       {/* 产品图片上传 */}
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-900">产品图片</h2>
         <div className="grid grid-cols-3 gap-2">
           {productImages.map((img, index) => (
@@ -664,7 +664,7 @@ export default function GeneratePanel({
 
       {/* 局部改款 - 仅外观重构模式 */}
       {productImages.length > 0 && applicationMode === "appearance-redesign" && (
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
+        <section className="glass-card rounded-2xl p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-900">局部改款（可选）</h2>
             <label className="flex items-center gap-2 cursor-pointer">
@@ -740,7 +740,7 @@ export default function GeneratePanel({
 
       {/* 设计参考图 - 仅外观重构模式 */}
       {applicationMode === "appearance-redesign" && (
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <section className="glass-card rounded-2xl p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">设计参考图（可选）</h2>
           <span className="text-[10px] text-gray-400">最多 8 张，可指定参考类型</span>
@@ -791,7 +791,7 @@ export default function GeneratePanel({
       )}
 
       {/* 基础设置 */}
-      <section className="rounded-2xl bg-white p-4 shadow-sm space-y-4">
+      <section className="glass-card rounded-2xl p-4 space-y-4">
         <h2 className="text-sm font-semibold text-gray-900">基础设置</h2>
 
         <div>
@@ -876,7 +876,7 @@ export default function GeneratePanel({
 
       {/* 电商配置 - 仅商品套图/详情页模式 */}
       {applicationMode !== "appearance-redesign" && (
-        <section className="rounded-2xl bg-white p-4 shadow-sm space-y-4">
+        <section className="glass-card rounded-2xl p-4 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900">
             {applicationMode === "product-kit" ? "商品套图设置" : "详情页设置"}
           </h2>
@@ -984,7 +984,7 @@ export default function GeneratePanel({
 
       {/* 设计方向 - 仅外观重构模式 */}
       {applicationMode === "appearance-redesign" && (
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-900">设计方向</h2>
         <div className="grid grid-cols-2 gap-2">
           {TEMPLATES.map((t) => (
@@ -1006,7 +1006,7 @@ export default function GeneratePanel({
 
       {/* 分组批量生成 - 仅外观重构模式 */}
       {applicationMode === "appearance-redesign" && (
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
+      <section className="glass-card rounded-2xl p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">分组批量生成</h2>
           <button
@@ -1113,7 +1113,7 @@ export default function GeneratePanel({
 
       {/* 生成进度 */}
       {generation.isGenerating && (
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
+        <section className="glass-card rounded-2xl p-4">
           <h2 className="mb-3 text-sm font-semibold text-gray-900">生成进度</h2>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
@@ -1156,14 +1156,14 @@ export default function GeneratePanel({
       {generation.isGenerating ? (
         <button
           onClick={handleCancel}
-          className="w-full rounded-xl bg-red-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-red-500/25 transition-all active:scale-[0.98] hover:bg-red-600"
+          className="w-full rounded-xl bg-gradient-to-r from-red-500 to-orange-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-red-500/30 transition-all active:scale-[0.98] hover:shadow-xl hover:shadow-red-500/40"
         >
           取消生成
         </button>
       ) : (
         <button
           onClick={batchMode ? handleBatchGenerate : handleGenerate}
-          className="w-full rounded-xl bg-brand-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition-all active:scale-[0.98]"
+          className="btn-primary w-full rounded-xl py-3.5 text-sm font-semibold"
         >
           <div className="flex items-center justify-center gap-2">
             <span>
@@ -1180,7 +1180,7 @@ export default function GeneratePanel({
                 ? batchGroups.filter((g) => g.enabled).reduce((sum, g) => sum + estimateCost(g.count, costConfig), 0)
                 : estimateCost(count, costConfig);
               return (
-                <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">
+                <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-xs font-medium backdrop-blur-sm">
                   预估 ¥{estimatedCost.toFixed(2)}
                 </span>
               );
