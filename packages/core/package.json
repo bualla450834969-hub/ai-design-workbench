@@ -18,10 +18,11 @@
       "import": "./dist/providers/index.js"
     }
   },
+  "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
-    "test": "node --test __tests__/",
+    "test": "npm run typecheck",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
