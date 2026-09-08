@@ -42,11 +42,11 @@ export default function HomePage() {
       <AppNavigation activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="pb-24 xl:pl-72">
-        {/* 移动端顶部 Header - 玻璃拟态 */}
+        {/* 移动端顶部 Header - 毛玻璃 */}
         <header className="sticky top-0 z-40 xl:hidden">
-          <div className="mx-3 mt-3 rounded-2xl bg-white/70 backdrop-blur-xl border border-white/50 shadow-md">
+          <div className="mx-3 mt-3 rounded-2xl bg-white/[0.06] backdrop-blur-2xl border border-white/10 shadow-md">
             <div className="flex h-12 items-center justify-center px-4">
-              <h1 className="text-base font-semibold bg-gradient-to-r from-indigo-600 to-pink-600 bg-clip-text text-transparent">
+              <h1 className="text-base font-semibold text-white">
                 {activeTab === "generate" && "新建生成"}
                 {activeTab === "results" && "生成结果"}
                 {activeTab === "history" && "历史记录"}

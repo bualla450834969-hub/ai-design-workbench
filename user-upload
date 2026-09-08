@@ -1,0 +1,45 @@
+✦
+生成
+▢
+结果
+◷
+历史
+⚙
+设置
+设置
+AI 供应商
+
+点击展开配置，API Key 仅保存在本地浏览器，不会上传
+
+GeekAI (默认)
+推荐，支持 Gemini 画图
+已配置
+›
+API Key
+方案模型（Brain）
+Gemini 3.1 Pro（推荐）
+Gemini 2.5 Pro
+Gemini 2.5 Flash（快）
+GPT-4o
+GPT-4.1
+画图模型（Image）
+Gemini 3.1 Flash Image（推荐）
+Gemini 2.5 Flash Image
+GPT Image 1
+配置自动保存到本地浏览器
+API易
+OpenAI 兼容接口
+›
+AIHubMix
+多模型聚合
+›
+自定义
+任意 OpenAI 兼容接口
+›
+关于
+
+核心引擎版本：v1.0.0
+
+基于 AI-Design-Pro 学习源码重构
+
+移动优先 · 响应式布局

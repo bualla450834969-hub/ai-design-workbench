@@ -613,10 +613,10 @@ export default function GeneratePanel({
           <button
             key={mode.value}
             onClick={() => setApplicationMode(mode.value)}
-            className={`flex-1 rounded-xl px-3 py-2.5 text-center transition-all duration-300 ${
+            className={`flex-1 rounded-xl px-3 py-2.5 text-center transition-all duration-200 ${
               applicationMode === mode.value
-                ? "bg-gradient-to-r from-indigo-500 to-pink-500 text-white shadow-md font-semibold"
-                : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                ? "bg-white/15 text-white font-semibold"
+                : "text-white/50 hover:text-white/80 hover:bg-white/5"
             }`}
           >
             <div className="text-xs">{mode.label}</div>
@@ -626,7 +626,7 @@ export default function GeneratePanel({
 
       {/* 产品图片上传 */}
       <section className="glass-card rounded-2xl p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-900">产品图片</h2>
+        <h2 className="mb-3 text-sm font-semibold text-white">产品图片</h2>
         <div className="grid grid-cols-3 gap-2">
           {productImages.map((img, index) => (
             <div key={index} className="relative aspect-square overflow-hidden rounded-lg border border-gray-200">
@@ -642,7 +642,7 @@ export default function GeneratePanel({
           {productImages.length < 5 && (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex aspect-square items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-brand-400 hover:text-brand-500"
+              className="flex aspect-square items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-white/40 hover:border-brand-400 hover:text-brand-500"
             >
               <div className="text-center">
                 <div className="text-2xl">+</div>
@@ -659,16 +659,16 @@ export default function GeneratePanel({
           onChange={handleImageUpload}
           className="hidden"
         />
-        <p className="mt-2 text-[10px] text-gray-400">最多 5 张，建议包含正面、侧面、细节</p>
+        <p className="mt-2 text-[10px] text-white/40">最多 5 张，建议包含正面、侧面、细节</p>
       </section>
 
       {/* 局部改款 - 仅外观重构模式 */}
       {productImages.length > 0 && applicationMode === "appearance-redesign" && (
         <section className="glass-card rounded-2xl p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">局部改款（可选）</h2>
+            <h2 className="text-sm font-semibold text-white">局部改款（可选）</h2>
             <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-xs text-gray-500">{localEditEnabled ? "已开启" : "关闭"}</span>
+              <span className="text-xs text-white/50">{localEditEnabled ? "已开启" : "关闭"}</span>
               <button
                 onClick={() => {
                   setLocalEditEnabled(!localEditEnabled);
@@ -689,7 +689,7 @@ export default function GeneratePanel({
           {localEditEnabled && (
             <div className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-600">修改类型</label>
+                <label className="mb-1.5 block text-xs font-medium text-white/70">修改类型</label>
                 <div className="flex gap-2">
                   {(Object.keys(LOCAL_EDIT_INTENT_LABELS) as LocalEditIntent[]).map((intent) => (
                     <button
@@ -698,7 +698,7 @@ export default function GeneratePanel({
                       className={`flex-1 rounded-lg py-2 text-xs font-medium transition-colors ${
                         editRegionIntent === intent
                           ? "bg-brand-600 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          : "bg-gray-100 text-white/70 hover:bg-gray-200"
                       }`}
                     >
                       {LOCAL_EDIT_INTENT_LABELS[intent]}
@@ -716,7 +716,7 @@ export default function GeneratePanel({
               />
 
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                <label className="mb-1.5 block text-xs font-medium text-white/70">
                   修改说明（可选）
                 </label>
                 <input
@@ -724,7 +724,7 @@ export default function GeneratePanel({
                   value={editRegionInstruction}
                   onChange={(e) => setEditRegionInstruction(e.target.value)}
                   placeholder="例如：把这个按钮换成旋钮；把这个区域改成金属质感"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className="input-field w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
 
@@ -742,8 +742,8 @@ export default function GeneratePanel({
       {applicationMode === "appearance-redesign" && (
       <section className="glass-card rounded-2xl p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">设计参考图（可选）</h2>
-          <span className="text-[10px] text-gray-400">最多 8 张，可指定参考类型</span>
+          <h2 className="text-sm font-semibold text-white">设计参考图（可选）</h2>
+          <span className="text-[10px] text-white/40">最多 8 张，可指定参考类型</span>
         </div>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
           {referenceImages.map((img, index) => (
@@ -769,7 +769,7 @@ export default function GeneratePanel({
           {referenceImages.length < 8 && (
             <button
               onClick={() => refInputRef.current?.click()}
-              className="flex aspect-square flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 transition-colors hover:border-brand-400 hover:text-brand-500"
+              className="flex aspect-square flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-white/40 transition-colors hover:border-brand-400 hover:text-brand-500"
             >
               <span className="text-xl">+</span>
               <span className="text-[10px]">参考图</span>
@@ -784,7 +784,7 @@ export default function GeneratePanel({
           onChange={handleRefUpload}
           className="hidden"
         />
-        <p className="mt-2 text-[10px] text-gray-400">
+        <p className="mt-2 text-[10px] text-white/40">
           造型=提取外形特征 · 配色=强制使用参考图颜色 · 材质=表面质感 · 风格=整体调性
         </p>
       </section>
@@ -792,22 +792,22 @@ export default function GeneratePanel({
 
       {/* 基础设置 */}
       <section className="glass-card rounded-2xl p-4 space-y-4">
-        <h2 className="text-sm font-semibold text-gray-900">基础设置</h2>
+        <h2 className="text-sm font-semibold text-white">基础设置</h2>
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-gray-600">产品名称（可选）</label>
+          <label className="mb-1.5 block text-xs font-medium text-white/70">产品名称（可选）</label>
           <input
             type="text"
             value={productName}
             onChange={(e) => setProductName(e.target.value)}
             placeholder="例如：桌面风扇"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
           />
         </div>
 
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label className="block text-xs font-medium text-gray-600">
+            <label className="block text-xs font-medium text-white/70">
               特殊需求 / 设计备注（可选）
             </label>
             <button
@@ -830,14 +830,14 @@ export default function GeneratePanel({
             onChange={(e) => setNotes(e.target.value)}
             placeholder="例如：必须保留圆形出风口；希望更年轻化；目标用户是女性；成本控制在50元以内..."
             rows={3}
-            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            className="input-field w-full resize-none rounded-lg px-3 py-2.5 text-sm"
           />
-          <p className="mt-1 text-[10px] text-gray-400">AI 会优先遵循这些明确要求，最多 800 字</p>
+          <p className="mt-1 text-[10px] text-white/40">AI 会优先遵循这些明确要求，最多 800 字</p>
         </div>
 
         {applicationMode === "appearance-redesign" && (
           <div>
-            <label className="mb-1.5 flex items-center justify-between text-xs font-medium text-gray-600">
+            <label className="mb-1.5 flex items-center justify-between text-xs font-medium text-white/70">
               <span>重构比例</span>
               <span className="text-brand-600 font-semibold">{variation}%</span>
             </label>
@@ -849,7 +849,7 @@ export default function GeneratePanel({
               onChange={(e) => setVariation(Number(e.target.value))}
               className="w-full accent-brand-600"
             />
-            <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+            <div className="mt-1 flex justify-between text-[10px] text-white/40">
               <span>保守改款</span>
               <span>造型突破</span>
             </div>
@@ -857,14 +857,14 @@ export default function GeneratePanel({
         )}
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-gray-600">生成数量</label>
+          <label className="mb-1.5 block text-xs font-medium text-white/70">生成数量</label>
           <div className="flex gap-2">
             {[1, 2, 3, 4].map((n) => (
               <button
                 key={n}
                 onClick={() => setCount(n)}
                 className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
-                  count === n ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  count === n ? "bg-brand-600 text-white" : "bg-gray-100 text-white/70 hover:bg-gray-200"
                 }`}
               >
                 {n}
@@ -877,14 +877,14 @@ export default function GeneratePanel({
       {/* 电商配置 - 仅商品套图/详情页模式 */}
       {applicationMode !== "appearance-redesign" && (
         <section className="glass-card rounded-2xl p-4 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-900">
+          <h2 className="text-sm font-semibold text-white">
             {applicationMode === "product-kit" ? "商品套图设置" : "详情页设置"}
           </h2>
 
           {/* 出图类型 - 仅商品套图模式 */}
           {applicationMode === "product-kit" && (
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-600">出图类型</label>
+              <label className="mb-1.5 block text-xs font-medium text-white/70">出图类型</label>
               <div className="grid grid-cols-2 gap-2">
                 {PRODUCT_KIT_PRESETS.map((preset) => (
                   <button
@@ -899,7 +899,7 @@ export default function GeneratePanel({
                     <div className={`text-xs font-medium ${kitPreset === preset.value ? "text-brand-700" : "text-gray-700"}`}>
                       {preset.label}
                     </div>
-                    <div className="mt-0.5 text-[10px] text-gray-400 line-clamp-1">{preset.desc}</div>
+                    <div className="mt-0.5 text-[10px] text-white/40 line-clamp-1">{preset.desc}</div>
                   </button>
                 ))}
               </div>
@@ -908,11 +908,11 @@ export default function GeneratePanel({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">电商平台</label>
+              <label className="mb-1 block text-xs font-medium text-white/70">电商平台</label>
               <select
                 value={commercePlatform}
                 onChange={(e) => setCommercePlatform(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
               >
                 {COMMERCE_PLATFORMS.map((p) => (
                   <option key={p.value} value={p.value}>{p.label}</option>
@@ -920,11 +920,11 @@ export default function GeneratePanel({
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">语言</label>
+              <label className="mb-1 block text-xs font-medium text-white/70">语言</label>
               <select
                 value={commerceLocale}
                 onChange={(e) => setCommerceLocale(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
               >
                 {COMMERCE_LOCALES.map((l) => (
                   <option key={l.value} value={l.value}>{l.label}</option>
@@ -932,11 +932,11 @@ export default function GeneratePanel({
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">分辨率</label>
+              <label className="mb-1 block text-xs font-medium text-white/70">分辨率</label>
               <select
                 value={commerceResolution}
                 onChange={(e) => setCommerceResolution(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
               >
                 {COMMERCE_RESOLUTIONS.map((r) => (
                   <option key={r.value} value={r.value}>{r.label}</option>
@@ -948,11 +948,11 @@ export default function GeneratePanel({
           {applicationMode === "detail-page" && (
             <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-4">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">详情页风格</label>
+                <label className="mb-1 block text-xs font-medium text-white/70">详情页风格</label>
                 <select
                   value={detailStyle}
                   onChange={(e) => setDetailStyle(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
                 >
                   {DETAIL_STYLES.map((s) => (
                     <option key={s.value} value={s.value}>{s.label}</option>
@@ -960,11 +960,11 @@ export default function GeneratePanel({
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">文案密度</label>
+                <label className="mb-1 block text-xs font-medium text-white/70">文案密度</label>
                 <select
                   value={copyDensity}
                   onChange={(e) => setCopyDensity(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
                 >
                   {COPY_DENSITIES.map((d) => (
                     <option key={d.value} value={d.value}>{d.label}</option>
@@ -974,7 +974,7 @@ export default function GeneratePanel({
             </div>
           )}
 
-          <p className="text-[10px] text-gray-400">
+          <p className="text-[10px] text-white/40">
             {applicationMode === "product-kit"
               ? "商品套图模式：保持产品外观不变，生成不同场景和角度的电商图"
               : "详情页模式：生成完整的电商详情页长图，包含首屏、卖点、功能、场景等模块"}
@@ -985,7 +985,7 @@ export default function GeneratePanel({
       {/* 设计方向 - 仅外观重构模式 */}
       {applicationMode === "appearance-redesign" && (
       <section className="glass-card rounded-2xl p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-900">设计方向</h2>
+        <h2 className="mb-3 text-sm font-semibold text-white">设计方向</h2>
         <div className="grid grid-cols-2 gap-2">
           {TEMPLATES.map((t) => (
             <button
@@ -1008,7 +1008,7 @@ export default function GeneratePanel({
       {applicationMode === "appearance-redesign" && (
       <section className="glass-card rounded-2xl p-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">分组批量生成</h2>
+          <h2 className="text-sm font-semibold text-white">分组批量生成</h2>
           <button
             onClick={() => setBatchMode(!batchMode)}
             className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${batchMode ? "bg-brand-600" : "bg-gray-300"}`}
@@ -1020,7 +1020,7 @@ export default function GeneratePanel({
         </div>
         {batchMode && (
           <div className="mt-4 space-y-3">
-            <p className="text-xs text-gray-500">一次生成多组不同参数的方案，自动顺序执行</p>
+            <p className="text-xs text-white/50">一次生成多组不同参数的方案，自动顺序执行</p>
             {batchGroups.map((group, idx) => (
               <div
                 key={group.id}
@@ -1038,12 +1038,12 @@ export default function GeneratePanel({
                       type="text"
                       value={group.name}
                       onChange={(e) => setBatchGroups((prev) => prev.map((g, i) => i === idx ? { ...g, name: e.target.value } : g))}
-                      className="w-24 rounded border border-gray-200 px-2 py-1 text-xs font-medium text-gray-900 focus:border-brand-500 focus:outline-none"
+                      className="w-24 rounded border border-gray-200 px-2 py-1 text-xs font-medium text-white focus:border-brand-500 focus:outline-none"
                     />
                   </div>
                   <button
                     onClick={() => setBatchGroups((prev) => prev.filter((_, i) => i !== idx))}
-                    className="text-xs text-gray-400 hover:text-red-500"
+                    className="text-xs text-white/40 hover:text-red-500"
                   >
                     删除
                   </button>
@@ -1051,11 +1051,11 @@ export default function GeneratePanel({
                 {group.enabled && (
                   <div className="mt-3 grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-1 block text-[10px] text-gray-500">设计方向</label>
+                      <label className="mb-1 block text-[10px] text-white/50">设计方向</label>
                       <select
                         value={group.templateId}
                         onChange={(e) => setBatchGroups((prev) => prev.map((g, i) => i === idx ? { ...g, templateId: e.target.value } : g))}
-                        className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
+                        className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
                       >
                         {TEMPLATES.map((t) => (
                           <option key={t.id} value={t.id}>{t.label}</option>
@@ -1063,11 +1063,11 @@ export default function GeneratePanel({
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-[10px] text-gray-500">生成数量</label>
+                      <label className="mb-1 block text-[10px] text-white/50">生成数量</label>
                       <select
                         value={group.count}
                         onChange={(e) => setBatchGroups((prev) => prev.map((g, i) => i === idx ? { ...g, count: parseInt(e.target.value) } : g))}
-                        className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
+                        className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
                       >
                         {[1, 2, 3, 4].map((n) => (
                           <option key={n} value={n}>{n}张</option>
@@ -1076,7 +1076,7 @@ export default function GeneratePanel({
                     </div>
                     <div className="col-span-2">
                       <div className="mb-1 flex items-center justify-between">
-                        <label className="text-[10px] text-gray-500">重构比例</label>
+                        <label className="text-[10px] text-white/50">重构比例</label>
                         <span className="text-[10px] font-medium text-brand-600">{group.variationLevel}%</span>
                       </div>
                       <input
@@ -1102,7 +1102,7 @@ export default function GeneratePanel({
                 count: 2,
                 notes: "",
               }])}
-              className="w-full rounded-lg border border-dashed border-gray-300 py-2 text-xs text-gray-500 hover:border-brand-400 hover:text-brand-600"
+              className="w-full rounded-lg border border-dashed border-gray-300 py-2 text-xs text-white/50 hover:border-brand-400 hover:text-brand-600"
             >
               + 添加分组
             </button>
@@ -1114,10 +1114,10 @@ export default function GeneratePanel({
       {/* 生成进度 */}
       {generation.isGenerating && (
         <section className="glass-card rounded-2xl p-4">
-          <h2 className="mb-3 text-sm font-semibold text-gray-900">生成进度</h2>
+          <h2 className="mb-3 text-sm font-semibold text-white">生成进度</h2>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600">{generation.message}</span>
+              <span className="text-white/70">{generation.message}</span>
               <span className="text-brand-600 font-medium">
                 {generation.percent}% · {generation.completed}/{generation.total}张
               </span>
@@ -1135,7 +1135,7 @@ export default function GeneratePanel({
                     {card.imageUrl ? (
                       <img src={card.imageUrl} alt={card.title} className="h-full w-full object-cover" />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-gray-400">生成中...</div>
+                      <div className="flex h-full items-center justify-center text-xs text-white/40">生成中...</div>
                     )}
                   </div>
                 ))}
@@ -1156,7 +1156,7 @@ export default function GeneratePanel({
       {generation.isGenerating ? (
         <button
           onClick={handleCancel}
-          className="w-full rounded-xl bg-gradient-to-r from-red-500 to-orange-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-red-500/30 transition-all active:scale-[0.98] hover:shadow-xl hover:shadow-red-500/40"
+          className="w-full rounded-xl bg-red-500/80 backdrop-blur py-3.5 text-sm font-semibold text-white border border-red-400/30 transition-all active:scale-[0.98] hover:bg-red-500/90"
         >
           取消生成
         </button>
@@ -1180,7 +1180,7 @@ export default function GeneratePanel({
                 ? batchGroups.filter((g) => g.enabled).reduce((sum, g) => sum + estimateCost(g.count, costConfig), 0)
                 : estimateCost(count, costConfig);
               return (
-                <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-xs font-medium backdrop-blur-sm">
+                <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-medium">
                   预估 ¥{estimatedCost.toFixed(2)}
                 </span>
               );
