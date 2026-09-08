@@ -102,9 +102,9 @@ export default function HomePage() {
     <div className="min-h-screen">
       <AppNavigation activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <main className="pb-24 xl:pl-72">
+      <main className="pb-24 lg:pl-72">
         {/* 移动端顶部 Header - 毛玻璃 */}
-        <header className="sticky top-0 z-40 xl:hidden">
+        <header className="sticky top-0 z-40 lg:hidden">
           <div className="mx-3 mt-3 rounded-2xl bg-white/[0.06] backdrop-blur-2xl border border-white/10 shadow-md">
             <div className="flex h-12 items-center justify-center px-4">
               <h1 className="text-base font-semibold text-white">
@@ -118,7 +118,7 @@ export default function HomePage() {
           </div>
         </header>
 
-        <div className="mx-auto max-w-3xl px-4 py-5 xl:max-w-5xl xl:py-8 xl:pr-8">
+        <div className="mx-auto max-w-3xl px-4 py-5 lg:max-w-5xl lg:py-8 lg:pr-8">
           {activeTab === "generate" && (
             <div className="animate-fade-in-up">
               <GeneratePanel

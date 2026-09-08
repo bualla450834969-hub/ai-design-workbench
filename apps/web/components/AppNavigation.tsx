@@ -26,7 +26,7 @@ export default function AppNavigation({
   return (
     <>
       {/* 移动端：底部 Tab 栏 - 毛玻璃 */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 pb-safe xl:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 pb-safe lg:hidden">
         <div className="mx-3 mb-3 rounded-2xl bg-white/[0.06] backdrop-blur-2xl border border-white/10 shadow-lg">
           <div className="flex items-center justify-around px-2 py-1.5">
             {TABS.map((tab) => (
@@ -48,7 +48,7 @@ export default function AppNavigation({
       </nav>
 
       {/* 桌面端：左侧边栏 - 毛玻璃 */}
-      <aside className="hidden xl:flex xl:w-56 xl:flex-col xl:fixed xl:left-4 xl:top-4 xl:bottom-4 xl:rounded-2xl xl:bg-white/[0.06] xl:backdrop-blur-2xl xl:border xl:border-white/10 xl:shadow-xl xl:p-5 xl:z-40">
+      <aside className="hidden lg:flex lg:w-56 lg:flex-col lg:fixed lg:left-4 lg:top-4 lg:bottom-4 lg:rounded-2xl lg:bg-white/[0.06] lg:backdrop-blur-2xl lg:border lg:border-white/10 lg:shadow-xl lg:p-5 lg:z-40">
         <div className="mb-8 px-2">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 shrink-0 rounded-xl bg-white/10 flex items-center justify-center text-white text-lg border border-white/10 leading-none">
