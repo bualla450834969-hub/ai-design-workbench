@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 
-type TabId = "generate" | "results" | "history" | "settings";
+type TabId = "generate" | "results" | "history" | "favorites" | "settings";
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "generate", label: "生成", icon: "✦" },
   { id: "results", label: "结果", icon: "▢" },
   { id: "history", label: "历史", icon: "◷" },
+  { id: "favorites", label: "收藏", icon: "★" },
   { id: "settings", label: "设置", icon: "⚙" },
 ];
 

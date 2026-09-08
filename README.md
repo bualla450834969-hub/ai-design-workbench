@@ -1,143 +1,188 @@
 # AI 产品外观重构工作台
 
-基于 AI-Design-Pro 学习源码重构的移动优先工作台，核心层独立可替换，支持渐进式优化。
+基于 AI-Design-Pro 核心引擎重构的产品外观设计工作台，支持产品外观重构、商品套图生成、电商详情页设计。
+
+## 功能特性
+
+### 核心功能
+- **外观重构**：上传产品图，AI 生成多套外观重构方案
+- **商品套图**：生成标准六视图、场景图、白底主图等电商商品图
+- **电商详情页**：自动生成详情页设计方案
+- **局部改款**：涂抹指定区域，精准修改部件材质/造型
+- **分组批量生成**：多组参数同时生成，对比不同设计方向
+
+### 设计辅助
+- **AI 智能编写设计需求**：根据产品图和名称自动生成专业设计需求
+- **设计参考图**：最多8张参考图，可指定参考类型（造型/配色/材质/风格）
+- **11种设计方向**：造型突破、功能重构、未来概念、高端升级等
+- **重构比例调节**：从保守改款到造型突破，精准控制改动幅度
+
+### 管理功能
+- **历史记录**：自动保存生成记录，支持复盘和参数复用
+- **方案收藏**：收藏喜欢的方案，最多50张
+- **方案详情**：展示设计说明、核心卖点、材质工艺、与原图差异
+- **生成上下文**：每次生成记录原图、参数、设计需求，方便复盘
+- **费用估算**：实时显示预估生成费用
+
+### 授权系统
+- **授权码验证**：每个授权码最多绑定3个设备
+- **设备绑定**：首次使用自动绑定，不可解绑
+- **支持多授权码**：环境变量配置多个授权码
+
+## 技术栈
+
+- **框架**：Next.js 15.5 + React 19
+- **语言**：TypeScript (strict)
+- **样式**：Tailwind CSS 3.4
+- **架构**：Monorepo (npm workspaces)
+  - `packages/core`：核心生成引擎（原样迁移，v1.0.0）
+  - `apps/web`：Web 应用层
+- **AI 供应商**：GeekAI / API易 / AIHubMix / 自定义 OpenAI 兼容接口
+
+## 本地开发
+
+### 环境要求
+- Node.js 22.x
+- npm 10+
+
+### 安装步骤
+
+```bash
+# 1. 克隆仓库
+git clone <your-repo-url>
+cd ai-workbench
+
+# 2. 安装依赖
+npm install
+
+# 3. 配置环境变量
+cp .env.example apps/web/.env.local
+# 编辑 apps/web/.env.local，填入授权码
+
+# 4. 启动开发服务器
+npm run dev
+```
+
+访问 http://localhost:3000
+
+### 生产构建
+
+```bash
+npm run build
+npm run start
+```
+
+## 部署到 Vercel
+
+### 前置准备
+1. GitHub 账号
+2. Vercel 账号（免费版即可）
+3. Upstash Redis 账号（可选，用于设备绑定持久化）
+
+### 部署步骤
+
+#### 1. 推送代码到 GitHub
+
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin <your-github-repo-url>
+git push -u origin main
+```
+
+#### 2. 导入 Vercel
+1. 登录 [vercel.com](https://vercel.com)
+2. 点击 "Add New" → "Project"
+3. 选择你的 GitHub 仓库
+4. Vercel 自动识别 Next.js 项目
+
+#### 3. 配置环境变量
+在 Vercel 项目设置 → Environment Variables 中添加：
+
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| `LICENSE_CODES` | 授权码列表（逗号分隔） | `LIHUO88888888,CODE-0002` |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis URL（可选） | `https://xxx.upstash.io` |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis Token（可选） | `your-token` |
+
+#### 4. 配置 Upstash Redis（推荐）
+生产环境建议配置 Redis，否则服务器重启后设备绑定关系会丢失。
+
+1. 登录 [upstash.com](https://upstash.com)
+2. 创建 Redis 数据库（选择免费套餐）
+3. 在 Vercel 项目中添加 Upstash 集成
+4. 或手动复制 REST URL 和 Token 到环境变量
+
+#### 5. 部署
+点击 "Deploy"，等待 2-3 分钟完成。
+
+部署完成后会得到一个 `xxx.vercel.app` 的域名，可以直接访问。
+
+### 绑定自定义域名（可选）
+1. Vercel 项目设置 → Domains
+2. 输入你的域名
+3. 按提示修改 DNS 解析
+4. 等待 SSL 证书自动签发
+
+## 授权码管理
+
+### 添加授权码
+编辑环境变量 `LICENSE_CODES`，用逗号分隔多个授权码：
+
+```
+LICENSE_CODES=LIHUO88888888,CLIENT-001,CLIENT-002
+```
+
+修改后需要重新部署 Vercel 才能生效。
+
+### 设备绑定规则
+- 每个授权码最多绑定 3 个设备
+- 设备在首次使用授权码时自动绑定
+- 绑定后不可解绑
+- 清除浏览器数据会导致设备ID变化，需要重新绑定
 
 ## 项目结构
 
 ```
 ai-workbench/
-├── apps/
-│   └── web/                  # 应用层（移动优先 UI）
-│       ├── app/
-│       │   ├── page.tsx      # 首页（底部Tab + 响应式布局）
-│       │   ├── layout.tsx
-│       │   ├── globals.css
-│       │   └── api/generate/ # API 路由（调用核心层）
-│       ├── components/
-│       │   └── AppNavigation.tsx  # 导航（移动端底部Tab/桌面端侧边栏）
-│       ├── .env.local        # 环境变量（不提交到 git）
-│       └── package.json
 ├── packages/
-│   └── core/                 # 核心层（独立包，可替换）
+│   └── core/                    # 核心生成引擎
 │       ├── src/
-│       │   ├── index.ts      # 唯一对外接口
-│       │   ├── types/app.ts  # 类型定义
-│       │   ├── pipeline/
-│       │   │   └── generate-engine.ts  # 完整生成 pipeline（4012行，原样迁移）
-│       │   ├── providers/    # 4个供应商适配
-│       │   │   ├── geeknow.ts
-│       │   │   ├── apiyi.ts
-│       │   │   ├── aihubmix.ts
-│       │   │   └── custom-openai.ts
-│       │   └── lib/          # 工具模块
-│       │       ├── templates.ts          # 11种设计方向模板
-│       │       ├── models.ts             # 模型列表
-│       │       ├── provider-resilience.ts # 供应商弹性容错
-│       │       ├── reference-color-palette.ts # 配色提取
-│       │       ├── reference-evidence.ts # 参考图证据
-│       │       ├── product-view-evidence.ts
-│       │       ├── prompt-contract.ts
-│       │       ├── local-edit.ts         # 局部改款
-│       │       ├── image-resolution.ts
-│       │       ├── commerce.ts
-│       │       ├── server-api-key.ts
-│       │       ├── license-auth.ts       # 授权
-│       │       └── license-db.ts
-│       ├── __tests__/
-│       ├── CHANGELOG.md
+│       │   ├── pipeline/        # 生成流程
+│       │   ├── providers/       # AI 供应商（4个）
+│       │   ├── lib/             # 工具模块
+│       │   └── types/           # 类型定义
 │       └── package.json
-├── package.json              # workspace 根配置
-├── tsconfig.base.json
-└── .gitignore
+├── apps/
+│   └── web/                     # Web 应用
+│       ├── app/
+│       │   ├── api/             # API 路由
+│       │   ├── page.tsx         # 主页面
+│       │   └── globals.css      # 全局样式
+│       ├── components/          # UI 组件
+│       ├── lib/                 # 应用层工具
+│       ├── types/               # 应用层类型
+│       ├── constants/           # 常量定义
+│       ├── utils/               # 工具函数
+│       └── package.json
+├── .env.example                 # 环境变量示例
+├── package.json                 # Monorepo 配置
+└── README.md
 ```
 
-## 核心设计原则
+## 核心引擎版本
 
-### 1. 核心层与应用层完全解耦
-- 核心层 `@workbench/core` 是独立 npm 包
-- 应用层只依赖核心层暴露的接口
-- 换核心版本 = 换电池，接口不变，内部可随便优化
+当前核心引擎版本：**v1.0.0**
 
-### 2. 核心层 100% 保真迁移
-- `generate-engine.ts` 从原项目原样复制，仅修改导入路径
-- 11种设计方向模板、4个供应商、质量校验逻辑全部保留
-- 行为与原项目一致，v1.0.0 作为稳定基线
+核心层独立成包，原样迁移自 AI-Design-Pro，逻辑未做任何修改。可通过 git tag 管理版本：
 
-### 3. 移动优先响应式布局
-- 移动端：底部 Tab 导航 + 单列堆叠
-- 桌面端（xl 断点）：左侧边栏 + 左右分栏
-- 一套代码，两端共享业务逻辑
-
-### 4. 可回滚的版本管理
-- 核心层稳定版打 git tag（`core-v1.0.0`）
-- 优化在新分支做，对比验证后才合入
-- 出问题随时回退到稳定标签
-
-## 快速开始
-
-### 1. 安装依赖
 ```bash
-npm install
+git tag core-v1.0.0
+git push origin core-v1.0.0
 ```
 
-### 2. 配置环境变量
-复制 `.env.example` 为 `.env.local`，填写：
-```bash
-APP_ACCESS_CODE=你的访问码
-GEEKNOW_API_KEY=你的GeekAI密钥（可选）
-```
+## 许可证
 
-### 3. 构建核心层
-```bash
-npm run build:core
-```
-
-### 4. 启动开发服务器
-```bash
-npm run dev
-```
-访问 http://localhost:3001
-
-## 核心层版本管理
-
-### 查看当前版本
-```bash
-git tag -l "core-*"
-```
-
-### 打新版本标签
-```bash
-git tag core-v1.1.0 -m "核心层 v1.1.0：优化 prompt"
-```
-
-### 回滚到稳定版
-```bash
-git checkout core-v1.0.0 -- packages/core/
-```
-
-### 在分支上优化核心层
-```bash
-git checkout -b core/optimize-prompt
-# 修改 packages/core/ 中的代码
-npm run build:core  # 编译验证
-npm run test:core   # 类型检查
-# 对比验证后合入主干
-```
-
-## 技术栈
-
-- **框架**: Next.js 15.5 + React 19
-- **语言**: TypeScript (strict)
-- **样式**: Tailwind CSS 3.4
-- **核心引擎**: 从 AI-Design-Pro 抽取
-- **包管理**: npm workspaces (monorepo)
-- **Node**: 22.x
-
-## 后续优化方向
-
-1. **核心层模块化**: 逐步拆分 4012 行的 generate-engine.ts 为 prompts/、quality/、pipeline/
-2. **快照测试**: 为核心 prompt 输出写快照测试，锁定行为
-3. **状态管理**: 引入 Zustand 管理生成状态
-4. **本地存储**: IndexedDB 保存历史记录
-5. **PWA**: 添加 Serwist 支持离线安装
-6. **涂抹工具**: 触摸优化的局部改款画布
+MIT
