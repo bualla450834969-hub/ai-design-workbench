@@ -123,8 +123,8 @@ export default function SettingsPanel() {
     <div className="space-y-4">
       {/* 授权码 */}
       <section className="glass-card rounded-2xl p-4">
-        <h2 className="mb-1 text-sm font-semibold text-gray-900">授权码</h2>
-        <p className="mb-3 text-xs text-gray-500">每个授权码最多绑定 3 个设备，绑定后不可解绑</p>
+        <h2 className="mb-1 text-sm font-semibold text-white">授权码</h2>
+        <p className="mb-3 text-xs text-white/50">每个授权码最多绑定 3 个设备，绑定后不可解绑</p>
         <div className="space-y-3">
           <div className="flex gap-2">
             <input
@@ -132,12 +132,12 @@ export default function SettingsPanel() {
               value={licenseCode}
               onChange={(e) => setLicenseCode(e.target.value.toUpperCase())}
               placeholder="输入授权码，例如 LIHUO-XXXX-XXXX"
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="input-field flex-1 rounded-lg px-3 py-2 text-sm uppercase"
             />
             <button
               onClick={handleVerifyLicense}
               disabled={isVerifyingLicense}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              className="rounded-lg bg-indigo-500/80 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all"
             >
               {isVerifyingLicense ? "验证中..." : "验证"}
             </button>
@@ -159,49 +159,49 @@ export default function SettingsPanel() {
       </section>
 
       <section className="glass-card rounded-2xl p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-900">AI 供应商</h2>
-        <p className="mb-3 text-xs text-gray-500">点击展开配置，API Key 仅保存在本地浏览器，不会上传</p>
+        <h2 className="mb-3 text-sm font-semibold text-white">AI 供应商</h2>
+        <p className="mb-3 text-xs text-white/50">点击展开配置，API Key 仅保存在本地浏览器，不会上传</p>
         <div className="space-y-2">
           {PROVIDERS.map((p) => {
             const isExpanded = expandedProvider === p.id;
             const config = providerConfigs[p.id];
             const hasKey = config?.apiKey && config.apiKey.length > 0;
             return (
-              <div key={p.id} className="overflow-hidden rounded-lg border border-gray-200">
+              <div key={p.id} className="overflow-hidden rounded-lg border border-white/10">
                 <button
                   onClick={() => setExpandedProvider(isExpanded ? null : p.id)}
-                  className="flex w-full items-center justify-between px-3 py-3 text-left hover:bg-gray-50"
+                  className="flex w-full items-center justify-between px-3 py-3 text-left hover:bg-white/5"
                 >
                   <div className="flex items-center gap-2">
                     <div>
-                      <div className="text-sm font-medium text-gray-800">{p.name}</div>
-                      <div className="text-xs text-gray-500">{p.desc}</div>
+                      <div className="text-sm font-medium text-white">{p.name}</div>
+                      <div className="text-xs text-white/50">{p.desc}</div>
                     </div>
                     {hasKey && (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">已配置</span>
                     )}
                   </div>
-                  <span className={`text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}>›</span>
+                  <span className={`text-white/40 transition-transform ${isExpanded ? "rotate-90" : ""}`}>›</span>
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-gray-100 bg-gray-50 p-3 space-y-3">
+                  <div className="border-t border-white/5 bg-white/5 p-3 space-y-3">
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-600">API Key</label>
+                      <label className="mb-1 block text-xs font-medium text-white/70">API Key</label>
                       <input
                         type="password"
                         value={config?.apiKey || ""}
                         onChange={(e) => updateConfig(p.id, "apiKey", e.target.value)}
                         placeholder="输入你的 API Key"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className="input-field w-full rounded-lg px-3 py-2 text-sm"
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-600">方案模型（Brain）</label>
+                      <label className="mb-1 block text-xs font-medium text-white/70">方案模型（Brain）</label>
                       <select
                         value={config?.brainModel || BRAIN_MODEL_OPTIONS[0]!.value}
                         onChange={(e) => updateConfig(p.id, "brainModel", e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className="input-field w-full rounded-lg px-3 py-2 text-sm"
                       >
                         {BRAIN_MODEL_OPTIONS.map((m) => (
                           <option key={m.value} value={m.value}>{m.label}</option>
@@ -209,11 +209,11 @@ export default function SettingsPanel() {
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-600">画图模型（Image）</label>
+                      <label className="mb-1 block text-xs font-medium text-white/70">画图模型（Image）</label>
                       <select
                         value={config?.imageModel || IMAGE_MODEL_OPTIONS[0]!.value}
                         onChange={(e) => updateConfig(p.id, "imageModel", e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className="input-field w-full rounded-lg px-3 py-2 text-sm"
                       >
                         {IMAGE_MODEL_OPTIONS.map((m) => (
                           <option key={m.value} value={m.value}>{m.label}</option>
@@ -222,17 +222,17 @@ export default function SettingsPanel() {
                     </div>
                     {p.id === "custom" && (
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-600">接口地址（Base URL）</label>
+                        <label className="mb-1 block text-xs font-medium text-white/70">接口地址（Base URL）</label>
                         <input
                           type="text"
                           value={config?.baseUrl || ""}
                           onChange={(e) => updateConfig(p.id, "baseUrl", e.target.value)}
                           placeholder="https://your-api-endpoint.com/v1"
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="input-field w-full rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
                     )}
-                    <p className="text-[10px] text-gray-400">配置自动保存到本地浏览器</p>
+                    <p className="text-[10px] text-white/40">配置自动保存到本地浏览器</p>
                   </div>
                 )}
               </div>
@@ -242,38 +242,38 @@ export default function SettingsPanel() {
       </section>
 
       <section className="glass-card rounded-2xl p-4">
-        <h2 className="mb-1 text-sm font-semibold text-gray-900">费用估算</h2>
-        <p className="mb-3 text-xs text-gray-500">配置模型单价后，生成按钮会实时显示预估费用（仅供参考，实际以供应商计费为准）</p>
+        <h2 className="mb-1 text-sm font-semibold text-white">费用估算</h2>
+        <p className="mb-3 text-xs text-white/50">配置模型单价后，生成按钮会实时显示预估费用（仅供参考，实际以供应商计费为准）</p>
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">方案模型（Brain）单次调用费用（元）</label>
+            <label className="mb-1 block text-xs font-medium text-white/70">方案模型（Brain）单次调用费用（元）</label>
             <input
               type="text"
               inputMode="decimal"
               value={costConfig.brainCostPerCall || ""}
               onChange={(e) => updateCostConfig("brainCostPerCall", e.target.value)}
               placeholder="例如：0.06"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="input-field w-full rounded-lg px-3 py-2 text-sm"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">画图模型（Image）单张生成费用（元）</label>
+            <label className="mb-1 block text-xs font-medium text-white/70">画图模型（Image）单张生成费用（元）</label>
             <input
               type="text"
               inputMode="decimal"
               value={costConfig.imageCostPerCall || ""}
               onChange={(e) => updateCostConfig("imageCostPerCall", e.target.value)}
               placeholder="例如：0.15"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="input-field w-full rounded-lg px-3 py-2 text-sm"
             />
           </div>
-          <p className="text-[10px] text-gray-400">计算公式：1次方案模型 + N张画图模型（N=生成数量）</p>
+          <p className="text-[10px] text-white/40">计算公式：1次方案模型 + N张画图模型（N=生成数量）</p>
         </div>
       </section>
 
       <section className="glass-card rounded-2xl p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-900">关于</h2>
-        <div className="space-y-2 text-xs text-gray-500">
+        <h2 className="mb-3 text-sm font-semibold text-white">关于</h2>
+        <div className="space-y-2 text-xs text-white/50">
           <p>核心引擎版本：v1.0.0</p>
           <p>基于 AI-Design-Pro 学习源码重构</p>
           <p>移动优先 · 响应式布局</p>
