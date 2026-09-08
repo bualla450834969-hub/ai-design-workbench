@@ -131,7 +131,16 @@ export default function SettingsPanel() {
               type="text"
               value={licenseCode}
               onChange={(e) => setLicenseCode(e.target.value.toUpperCase())}
+              onPaste={(e) => {
+                const text = e.clipboardData.getData('text');
+                setLicenseCode(text.toUpperCase().trim());
+                e.preventDefault();
+              }}
               placeholder="输入授权码，例如 LIHUO-XXXX-XXXX"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="characters"
+              spellCheck={false}
               className="input-field flex-1 rounded-lg px-3 py-2 text-sm uppercase"
             />
             <button
@@ -143,7 +152,7 @@ export default function SettingsPanel() {
             </button>
           </div>
           {licenseStatus && (
-            <div className={`rounded-lg p-3 text-xs ${licenseStatus.valid ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+            <div className={`rounded-lg p-3 text-xs ${licenseStatus.valid ? "bg-green-500/15 text-green-300 border border-green-500/30" : "bg-red-500/15 text-red-300 border border-red-500/30"}`}>
               {licenseStatus.valid ? (
                 <div className="space-y-1">
                   <p className="font-medium">✓ 授权码有效</p>
