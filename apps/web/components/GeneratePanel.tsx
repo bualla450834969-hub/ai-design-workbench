@@ -695,10 +695,10 @@ export default function GeneratePanel({
                     <button
                       key={intent}
                       onClick={() => setEditRegionIntent(intent)}
-                      className={`flex-1 rounded-lg py-2 text-xs font-medium transition-colors ${
+                      className={`flex-1 rounded-lg py-2 text-xs font-medium transition-all ${
                         editRegionIntent === intent
-                          ? "bg-brand-600 text-white"
-                          : "bg-gray-100 text-white/70 hover:bg-gray-200"
+                          ? "bg-indigo-500/80 text-white"
+                          : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
                       }`}
                     >
                       {LOCAL_EDIT_INTENT_LABELS[intent]}
@@ -813,7 +813,7 @@ export default function GeneratePanel({
             <button
               onClick={handleAiWriteNotes}
               disabled={isAiWriting}
-              className="flex items-center gap-1 rounded-md bg-brand-50 px-2 py-1 text-[10px] font-medium text-brand-600 hover:bg-brand-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 rounded-md bg-indigo-500/20 px-2 py-1 text-[10px] font-medium text-indigo-300 hover:bg-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {isAiWriting ? (
                 <>
@@ -839,7 +839,7 @@ export default function GeneratePanel({
           <div>
             <label className="mb-1.5 flex items-center justify-between text-xs font-medium text-white/70">
               <span>重构比例</span>
-              <span className="text-brand-600 font-semibold">{variation}%</span>
+              <span className="text-indigo-400 font-semibold">{variation}%</span>
             </label>
             <input
               type="range"
@@ -863,8 +863,8 @@ export default function GeneratePanel({
               <button
                 key={n}
                 onClick={() => setCount(n)}
-                className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
-                  count === n ? "bg-brand-600 text-white" : "bg-gray-100 text-white/70 hover:bg-gray-200"
+                className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
+                  count === n ? "bg-indigo-500/80 text-white" : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
                 }`}
               >
                 {n}
@@ -890,13 +890,13 @@ export default function GeneratePanel({
                   <button
                     key={preset.value}
                     onClick={() => setKitPreset(preset.value)}
-                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                    className={`rounded-lg border px-3 py-2 text-left transition-all ${
                       kitPreset === preset.value
-                        ? "border-brand-500 bg-brand-50"
-                        : "border-gray-200 hover:border-brand-300"
+                        ? "border-indigo-400/50 bg-indigo-500/20"
+                        : "border-white/10 hover:border-white/20 bg-white/[0.03]"
                     }`}
                   >
-                    <div className={`text-xs font-medium ${kitPreset === preset.value ? "text-brand-700" : "text-gray-700"}`}>
+                    <div className={`text-xs font-medium ${kitPreset === preset.value ? "text-white" : "text-white/70"}`}>
                       {preset.label}
                     </div>
                     <div className="mt-0.5 text-[10px] text-white/40 line-clamp-1">{preset.desc}</div>
@@ -991,10 +991,10 @@ export default function GeneratePanel({
             <button
               key={t.id}
               onClick={() => setTemplateId(t.id)}
-              className={`rounded-lg border px-3 py-2.5 text-left text-xs transition-colors ${
+              className={`rounded-lg border px-3 py-2.5 text-left text-xs transition-all ${
                 templateId === t.id
-                  ? "border-brand-500 bg-brand-50 text-brand-700 font-medium"
-                  : "border-gray-200 text-gray-700 hover:border-brand-400 hover:bg-brand-50"
+                  ? "border-indigo-400/50 bg-indigo-500/20 text-white font-medium"
+                  : "border-white/10 text-white/60 hover:border-white/20 hover:bg-white/5 hover:text-white/80"
               }`}
             >
               {t.label}
@@ -1122,7 +1122,7 @@ export default function GeneratePanel({
                 {generation.percent}% · {generation.completed}/{generation.total}张
               </span>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
               <div
                 className="h-full rounded-full bg-brand-600 transition-all duration-300"
                 style={{ width: `${Math.min(generation.percent, 100)}%` }}
@@ -1131,7 +1131,7 @@ export default function GeneratePanel({
             {generation.cards.length > 0 && (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {generation.cards.map((card) => (
-                  <div key={card.id} className="aspect-square overflow-hidden rounded-lg bg-gray-100">
+                  <div key={card.id} className="aspect-square overflow-hidden rounded-lg bg-white/10">
                     {card.imageUrl ? (
                       <img src={card.imageUrl} alt={card.title} className="h-full w-full object-cover" />
                     ) : (
