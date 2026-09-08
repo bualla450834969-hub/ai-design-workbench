@@ -8,6 +8,7 @@ import HistoryPanel from "@/components/HistoryPanel";
 import FavoritesPanel from "@/components/FavoritesPanel";
 import SettingsPanel from "@/components/SettingsPanel";
 import LoginPage from "@/components/LoginPage";
+import SplashScreen from "@/components/SplashScreen";
 import { ToastProvider } from "@/components/Toast";
 import { getDeviceId, getLicenseCode } from "@/utils";
 import type { ResultCard, GenerationState, PendingGenerateConfig, BatchResultGroup } from "@/types";
@@ -27,6 +28,7 @@ export default function HomePage() {
   const [batchResults, setBatchResults] = useState<BatchResultGroup[]>([]);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
 
   // 应用启动时检查授权状态
   useEffect(() => {
@@ -68,19 +70,24 @@ export default function HomePage() {
     setActiveTab("results");
   }, []);
 
+  // 第一步：显示启动页
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
+
   // 正在检查授权状态，显示加载动画
   if (isCheckingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-black">
         <div className="text-center">
-          <div className="inline-block w-8 h-8 animate-spin rounded-full border-2 border-white/20 border-t-white mb-3" />
-          <p className="text-sm text-white/50">正在验证授权...</p>
+          <div className="inline-block w-8 h-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80 mb-3" />
+          <p className="text-sm text-white/50 tracking-wider">正在验证授权...</p>
         </div>
       </div>
     );
   }
 
-  // 未授权，显示登录页
+  // 第二步：未授权，显示登录页
   if (!isAuthorized) {
     return (
       <ToastProvider>
@@ -89,7 +96,7 @@ export default function HomePage() {
     );
   }
 
-  // 已授权，显示主界面
+  // 第三步：已授权，显示主界面
   return (
     <ToastProvider>
     <div className="min-h-screen">
