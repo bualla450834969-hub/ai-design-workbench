@@ -51,12 +51,12 @@ export default function AppNavigation({
       <aside className="hidden xl:flex xl:w-56 xl:flex-col xl:fixed xl:left-4 xl:top-4 xl:bottom-4 xl:rounded-2xl xl:bg-white/[0.06] xl:backdrop-blur-2xl xl:border xl:border-white/10 xl:shadow-xl xl:p-5 xl:z-40">
         <div className="mb-8 px-2">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white text-lg border border-white/10">
+            <div className="w-10 h-10 shrink-0 rounded-xl bg-white/10 flex items-center justify-center text-white text-lg border border-white/10 leading-none">
               ✦
             </div>
-            <div>
-              <h1 className="text-base font-bold text-white">AI 设计工作台</h1>
-              <p className="text-xs text-white/50 mt-0.5">产品外观重构</p>
+            <div className="flex flex-col justify-center">
+              <h1 className="text-base font-bold text-white leading-tight">AI 设计工作台</h1>
+              <p className="text-xs text-white/50 mt-0.5 leading-tight">产品外观重构</p>
             </div>
           </div>
         </div>
@@ -71,8 +71,8 @@ export default function AppNavigation({
                   : "text-white/60 hover:bg-white/5 hover:text-white/80"
               }`}
             >
-              <span className="text-base">{tab.icon}</span>
-              <span>{tab.label}</span>
+              <span className="text-base w-5 text-center leading-none">{tab.icon}</span>
+              <span className="leading-none">{tab.label}</span>
             </button>
           ))}
         </div>
