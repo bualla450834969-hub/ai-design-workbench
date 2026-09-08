@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import AppNavigation, { type TabId } from "@/components/AppNavigation";
 import GeneratePanel from "@/components/GeneratePanel";
 import ResultsPanel from "@/components/ResultsPanel";
 import HistoryPanel from "@/components/HistoryPanel";
 import FavoritesPanel from "@/components/FavoritesPanel";
 import SettingsPanel from "@/components/SettingsPanel";
+import LoginPage from "@/components/LoginPage";
 import { ToastProvider } from "@/components/Toast";
+import { getDeviceId, getLicenseCode } from "@/utils";
 import type { ResultCard, GenerationState, PendingGenerateConfig, BatchResultGroup } from "@/types";
 
 export default function HomePage() {
@@ -23,6 +25,36 @@ export default function HomePage() {
   });
   const [pendingConfig, setPendingConfig] = useState<PendingGenerateConfig>(null);
   const [batchResults, setBatchResults] = useState<BatchResultGroup[]>([]);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  // 应用启动时检查授权状态
+  useEffect(() => {
+    const checkAuth = async () => {
+      const savedLicense = getLicenseCode();
+      if (!savedLicense) {
+        setIsCheckingAuth(false);
+        return;
+      }
+
+      try {
+        const deviceId = getDeviceId();
+        const response = await fetch("/api/license/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ licenseCode: savedLicense, deviceId }),
+        });
+        const data = await response.json();
+        setIsAuthorized(data.valid && data.thisDeviceBound);
+      } catch {
+        setIsAuthorized(false);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   const handleGenerationComplete = useCallback((cards: ResultCard[]) => {
     setGeneration((prev) => ({ ...prev, isGenerating: false, cards }));
@@ -36,6 +68,28 @@ export default function HomePage() {
     setActiveTab("results");
   }, []);
 
+  // 正在检查授权状态，显示加载动画
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 animate-spin rounded-full border-2 border-white/20 border-t-white mb-3" />
+          <p className="text-sm text-white/50">正在验证授权...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未授权，显示登录页
+  if (!isAuthorized) {
+    return (
+      <ToastProvider>
+        <LoginPage onAuthorized={() => setIsAuthorized(true)} />
+      </ToastProvider>
+    );
+  }
+
+  // 已授权，显示主界面
   return (
     <ToastProvider>
     <div className="min-h-screen">
