@@ -1,0 +1,19 @@
+{
+  "name": "ai-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @workbench/web",
+    "build": "npm run build --workspace @workbench/core && npm run build --workspace @workbench/web",
+    "build:core": "npm run build --workspace @workbench/core",
+    "test:core": "npm run test --workspace @workbench/core",
+    "lint": "npm run lint --workspace @workbench/web"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}

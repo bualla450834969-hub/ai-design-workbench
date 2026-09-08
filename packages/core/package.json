@@ -1,0 +1,40 @@
+{
+  "name": "@workbench/core",
+  "version": "1.0.0",
+  "description": "AI 产品外观重构工作台 - 核心生成引擎（prompt、pipeline、quality、providers）",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./prompts": {
+      "types": "./dist/prompts/index.d.ts",
+      "import": "./dist/prompts/index.js"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "node --test __tests__/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "next": "^15.5.21",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}
