@@ -43,6 +43,49 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
     let lastEdgeW = 0;
     let lastEdgeH = 0;
     let animationId: number;
+    let videoReady = false;
+    let videoTimedOut = false;
+
+    // 视频加载超时：2秒内没加载好就用静态背景
+    const videoTimeout = setTimeout(() => {
+      videoTimedOut = true;
+    }, 2000);
+
+    // 视频加载成功
+    const handleVideoReady = () => {
+      videoReady = true;
+      clearTimeout(videoTimeout);
+    };
+
+    // 视频加载失败
+    const handleVideoError = () => {
+      videoTimedOut = true;
+      clearTimeout(videoTimeout);
+    };
+
+    video.addEventListener("loadeddata", handleVideoReady);
+    video.addEventListener("error", handleVideoError);
+
+    // 绘制静态 fallback 背景（渐变色）
+    const drawStaticFallback = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+      const gradient = ctx.createLinearGradient(0, 0, w, h);
+      gradient.addColorStop(0, "#1a1a2e");
+      gradient.addColorStop(0.3, "#16213e");
+      gradient.addColorStop(0.6, "#0f3460");
+      gradient.addColorStop(1, "#1a1a2e");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, w, h);
+      // 添加一些光点
+      for (let i = 0; i < 20; i++) {
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        const r = Math.random() * 3 + 1;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.3 + 0.1})`;
+        ctx.fill();
+      }
+    };
 
     // 鼠标跟随效果
     let mouseX = 0;
@@ -108,17 +151,24 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
       const vw = document.documentElement.clientWidth;
       const vh = document.documentElement.clientHeight;
 
+      // 视频没准备好且没超时，继续等待
       if (!video.videoWidth || !video.videoHeight) {
-        animationId = requestAnimationFrame(frame);
-        return;
+        if (!videoTimedOut) {
+          animationId = requestAnimationFrame(frame);
+          return;
+        }
+        // 超时了，用静态背景继续
       }
 
-      // 计算 object-fit: cover 裁剪
-      const cover = Math.max(vw / video.videoWidth, vh / video.videoHeight);
-      const sw = vw / cover;
-      const sh = vh / cover;
-      const sx = (video.videoWidth - sw) / 2;
-      const sy = (video.videoHeight - sh) / 2;
+      // 计算 object-fit: cover 裁剪（仅视频可用时）
+      let sw = 0, sh = 0, sx = 0, sy = 0;
+      if (video.videoWidth && video.videoHeight) {
+        const cover = Math.max(vw / video.videoWidth, vh / video.videoHeight);
+        sw = vw / cover;
+        sh = vh / cover;
+        sx = (video.videoWidth - sw) / 2;
+        sy = (video.videoHeight - sh) / 2;
+      }
 
       // 主 logo canvas
       const rect = logoGlass.getBoundingClientRect();
@@ -136,9 +186,13 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         }
 
         try {
-          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+          if (video.videoWidth && video.videoHeight) {
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+          } else {
+            drawStaticFallback(ctx, canvas.width, canvas.height);
+          }
         } catch (err) {
-          // 帧未就绪
+          drawStaticFallback(ctx, canvas.width, canvas.height);
         }
       }
 
@@ -153,12 +207,16 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         }
         try {
           edgeCtx.save();
-          edgeCtx.translate(edgeCanvas.width, 0);
-          edgeCtx.scale(-1, 1);
-          edgeCtx.drawImage(video, 0, 0, edgeCanvas.width, edgeCanvas.height);
+          if (video.videoWidth && video.videoHeight) {
+            edgeCtx.translate(edgeCanvas.width, 0);
+            edgeCtx.scale(-1, 1);
+            edgeCtx.drawImage(video, 0, 0, edgeCanvas.width, edgeCanvas.height);
+          } else {
+            drawStaticFallback(edgeCtx, edgeCanvas.width, edgeCanvas.height);
+          }
           edgeCtx.restore();
         } catch (err) {
-          // 帧未就绪
+          drawStaticFallback(edgeCtx, edgeCanvas.width, edgeCanvas.height);
         }
       }
 
@@ -180,6 +238,9 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
       cancelAnimationFrame(animationId);
       clearTimeout(fadeTimer);
       clearTimeout(completeTimer);
+      clearTimeout(videoTimeout);
+      video.removeEventListener("loadeddata", handleVideoReady);
+      video.removeEventListener("error", handleVideoError);
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("touchmove", handleTouchMove);
     };
