@@ -327,8 +327,8 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         ref={logoGlassRef}
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[2] pointer-events-none"
         style={{
-          width: "min(80vw, 820px)",
-          height: "min(53.7vw, 550px)",
+          width: "min(72vw, 738px)",
+          height: "min(48.3vw, 495px)",
           WebkitMaskImage: LOGO_MASK_FILL,
           maskImage: LOGO_MASK_FILL,
           WebkitMaskSize: "100% 100%",
