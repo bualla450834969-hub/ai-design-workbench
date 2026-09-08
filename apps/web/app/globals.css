@@ -223,3 +223,153 @@ input[type="range"]::-moz-range-thumb {
 .text-subtle {
   color: rgba(255, 255, 255, 0.7);
 }
+
+/* ========== 登录页特效动画 ========== */
+
+/* 全息旋转动画 */
+@keyframes holographic-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 光晕脉冲动画 */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}
+
+/* 渐变流动动画 */
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 微光扫过动画 */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* 浮动动画 */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-holographic-spin {
+  animation: holographic-spin 6s linear infinite;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 4s ease-in-out infinite;
+}
+
+.animate-gradient-flow {
+  background-size: 200% 200%;
+  animation: gradient-flow 4s ease infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* 登录页背景 */
+.login-bg {
+  background: #000;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 全息 Logo 容器 */
+.holographic-logo {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.holographic-logo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.05), rgba(255,255,255,0.15));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+.holographic-logo::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 22px;
+  background: linear-gradient(45deg, 
+    rgba(255,0,0,0.3), 
+    rgba(255,165,0,0.3), 
+    rgba(255,255,0,0.3), 
+    rgba(0,255,0,0.3), 
+    rgba(0,100,255,0.3), 
+    rgba(128,0,255,0.3),
+    rgba(255,0,0,0.3)
+  );
+  background-size: 300% 300%;
+  animation: gradient-flow 5s ease infinite;
+  filter: blur(8px);
+  opacity: 0.6;
+  z-index: -1;
+}
+
+.holographic-rainbow {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.holographic-rainbow::before {
+  content: '';
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  top: -50%;
+  left: -50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(255,0,0,0.15),
+    rgba(255,165,0,0.15),
+    rgba(255,255,0,0.15),
+    rgba(0,255,0,0.15),
+    rgba(0,100,255,0.15),
+    rgba(128,0,255,0.15),
+    rgba(255,0,0,0.15)
+  );
+  animation: holographic-spin 8s linear infinite;
+}
+
+/* 登录卡片微光扫过 */
+.login-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 4s ease-in-out infinite;
+  pointer-events: none;
+}
