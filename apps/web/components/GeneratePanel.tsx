@@ -629,7 +629,7 @@ export default function GeneratePanel({
         <h2 className="mb-3 text-sm font-semibold text-white">产品图片</h2>
         <div className="grid grid-cols-3 gap-2">
           {productImages.map((img, index) => (
-            <div key={index} className="relative aspect-square overflow-hidden rounded-lg border border-gray-200">
+            <div key={index} className="relative aspect-square overflow-hidden rounded-lg border border-white/10">
               <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
               <button
                 onClick={() => removeImage(index)}
@@ -642,7 +642,7 @@ export default function GeneratePanel({
           {productImages.length < 5 && (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex aspect-square items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-white/40 hover:border-brand-400 hover:text-brand-500"
+              className="flex aspect-square items-center justify-center rounded-lg border-2 border-dashed border-white/20 text-white/40 hover:border-indigo-400/50 hover:text-indigo-300 transition-all"
             >
               <div className="text-center">
                 <div className="text-2xl">+</div>
@@ -677,7 +677,7 @@ export default function GeneratePanel({
                     setEditRegionGuide(null);
                   }
                 }}
-                className={`relative h-5 w-9 rounded-full transition-colors ${localEditEnabled ? "bg-brand-600" : "bg-gray-300"}`}
+                className={`relative h-5 w-9 rounded-full transition-colors ${localEditEnabled ? "bg-indigo-500/80" : "bg-white/20"}`}
               >
                 <span
                   className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${localEditEnabled ? "translate-x-4" : "translate-x-0.5"}`}
@@ -747,7 +747,7 @@ export default function GeneratePanel({
         </div>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
           {referenceImages.map((img, index) => (
-            <div key={index} className="group relative aspect-square overflow-hidden rounded-lg border border-gray-200">
+            <div key={index} className="group relative aspect-square overflow-hidden rounded-lg border border-white/10">
               <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
               <button
                 onClick={() => removeRef(index)}
@@ -769,7 +769,7 @@ export default function GeneratePanel({
           {referenceImages.length < 8 && (
             <button
               onClick={() => refInputRef.current?.click()}
-              className="flex aspect-square flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-white/40 transition-colors hover:border-brand-400 hover:text-brand-500"
+              className="flex aspect-square flex-col items-center justify-center rounded-lg border-2 border-dashed border-white/20 text-white/40 transition-all hover:border-indigo-400/50 hover:text-indigo-300"
             >
               <span className="text-xl">+</span>
               <span className="text-[10px]">参考图</span>
@@ -817,7 +817,7 @@ export default function GeneratePanel({
             >
               {isAiWriting ? (
                 <>
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-300 border-t-brand-600" />
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-300/50 border-t-indigo-400" />
                   AI 编写中...
                 </>
               ) : (
@@ -847,7 +847,7 @@ export default function GeneratePanel({
               max={100}
               value={variation}
               onChange={(e) => setVariation(Number(e.target.value))}
-              className="w-full accent-brand-600"
+              className="w-full"
             />
             <div className="mt-1 flex justify-between text-[10px] text-white/40">
               <span>保守改款</span>
@@ -1011,7 +1011,7 @@ export default function GeneratePanel({
           <h2 className="text-sm font-semibold text-white">分组批量生成</h2>
           <button
             onClick={() => setBatchMode(!batchMode)}
-            className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${batchMode ? "bg-brand-600" : "bg-gray-300"}`}
+            className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${batchMode ? "bg-indigo-500/80" : "bg-white/20"}`}
           >
             <span
               className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${batchMode ? "left-[22px]" : "left-0.5"}`}
@@ -1024,13 +1024,13 @@ export default function GeneratePanel({
             {batchGroups.map((group, idx) => (
               <div
                 key={group.id}
-                className={`rounded-xl border p-3 transition-colors ${group.enabled ? "border-brand-200 bg-brand-50/50" : "border-gray-200 bg-gray-50 opacity-60"}`}
+                className={`rounded-xl border p-3 transition-all ${group.enabled ? "border-indigo-400/30 bg-indigo-500/10" : "border-white/10 bg-white/[0.02] opacity-60"}`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setBatchGroups((prev) => prev.map((g, i) => i === idx ? { ...g, enabled: !g.enabled } : g))}
-                      className={`h-4 w-4 rounded border-2 flex items-center justify-center ${group.enabled ? "border-brand-600 bg-brand-600" : "border-gray-300"}`}
+                      className={`h-4 w-4 rounded border-2 flex items-center justify-center ${group.enabled ? "border-indigo-400 bg-indigo-500/80" : "border-white/30"}`}
                     >
                       {group.enabled && <span className="text-[10px] text-white">✓</span>}
                     </button>
@@ -1038,7 +1038,7 @@ export default function GeneratePanel({
                       type="text"
                       value={group.name}
                       onChange={(e) => setBatchGroups((prev) => prev.map((g, i) => i === idx ? { ...g, name: e.target.value } : g))}
-                      className="w-24 rounded border border-gray-200 px-2 py-1 text-xs font-medium text-white focus:border-brand-500 focus:outline-none"
+                      className="input-field w-24 rounded px-2 py-1 text-xs font-medium"
                     />
                   </div>
                   <button
@@ -1055,7 +1055,7 @@ export default function GeneratePanel({
                       <select
                         value={group.templateId}
                         onChange={(e) => setBatchGroups((prev) => prev.map((g, i) => i === idx ? { ...g, templateId: e.target.value } : g))}
-                        className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+                        className="input-field w-full rounded-lg px-2 py-1.5 text-xs"
                       >
                         {TEMPLATES.map((t) => (
                           <option key={t.id} value={t.id}>{t.label}</option>
@@ -1067,7 +1067,7 @@ export default function GeneratePanel({
                       <select
                         value={group.count}
                         onChange={(e) => setBatchGroups((prev) => prev.map((g, i) => i === idx ? { ...g, count: parseInt(e.target.value) } : g))}
-                        className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+                        className="input-field w-full rounded-lg px-2 py-1.5 text-xs"
                       >
                         {[1, 2, 3, 4].map((n) => (
                           <option key={n} value={n}>{n}张</option>
@@ -1077,7 +1077,7 @@ export default function GeneratePanel({
                     <div className="col-span-2">
                       <div className="mb-1 flex items-center justify-between">
                         <label className="text-[10px] text-white/50">重构比例</label>
-                        <span className="text-[10px] font-medium text-brand-600">{group.variationLevel}%</span>
+                        <span className="text-[10px] font-medium text-indigo-400">{group.variationLevel}%</span>
                       </div>
                       <input
                         type="range"
@@ -1085,7 +1085,7 @@ export default function GeneratePanel({
                         max="100"
                         value={group.variationLevel}
                         onChange={(e) => setBatchGroups((prev) => prev.map((g, i) => i === idx ? { ...g, variationLevel: parseInt(e.target.value) } : g))}
-                        className="w-full accent-brand-600"
+                        className="w-full"
                       />
                     </div>
                   </div>
@@ -1102,7 +1102,7 @@ export default function GeneratePanel({
                 count: 2,
                 notes: "",
               }])}
-              className="w-full rounded-lg border border-dashed border-gray-300 py-2 text-xs text-white/50 hover:border-brand-400 hover:text-brand-600"
+              className="w-full rounded-lg border border-dashed border-white/20 py-2 text-xs text-white/50 hover:border-indigo-400/50 hover:text-indigo-300 transition-all"
             >
               + 添加分组
             </button>
@@ -1118,13 +1118,13 @@ export default function GeneratePanel({
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-white/70">{generation.message}</span>
-              <span className="text-brand-600 font-medium">
+              <span className="text-indigo-400 font-medium">
                 {generation.percent}% · {generation.completed}/{generation.total}张
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-brand-600 transition-all duration-300"
+                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-300"
                 style={{ width: `${Math.min(generation.percent, 100)}%` }}
               />
             </div>
