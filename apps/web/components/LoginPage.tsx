@@ -74,32 +74,32 @@ export default function LoginPage({ onAuthorized }: LoginPageProps) {
       <div className="w-full max-w-md relative z-10">
         {/* Logo 区域 - 全息六边形 logo（和启动页一致） */}
         <div className="text-center mb-10 animate-float">
-          <div className="relative inline-block mb-6" style={{ width: '120px', height: '80px' }}>
+          <div className="relative inline-block mb-6" style={{ width: '160px', height: '108px' }}>
             {/* 外发光 */}
-            <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 blur-2xl animate-glow-pulse" />
+            <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-pink-500/30 blur-3xl animate-glow-pulse" />
             {/* 六边形 SVG */}
             <svg
               viewBox="0 0 369.53 247.87"
               className="relative w-full h-full"
-              style={{ filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.1))' }}
+              style={{ filter: 'drop-shadow(0 0 30px rgba(255,255,255,0.2))' }}
             >
               <defs>
-                {/* 全息渐变 */}
+                {/* 全息渐变 - 增强不透明度 */}
                 <linearGradient id="login-holo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="rgba(255,255,255,0.9)" />
-                  <stop offset="25%" stopColor="rgba(200,220,255,0.8)" />
-                  <stop offset="50%" stopColor="rgba(255,200,220,0.7)" />
-                  <stop offset="75%" stopColor="rgba(200,255,220,0.8)" />
-                  <stop offset="100%" stopColor="rgba(220,200,255,0.9)" />
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.95)" />
+                  <stop offset="25%" stopColor="rgba(180,210,255,0.9)" />
+                  <stop offset="50%" stopColor="rgba(255,180,210,0.85)" />
+                  <stop offset="75%" stopColor="rgba(180,255,210,0.9)" />
+                  <stop offset="100%" stopColor="rgba(210,180,255,0.95)" />
                 </linearGradient>
-                {/* 彩虹反光动画 */}
+                {/* 彩虹反光动画 - 增强不透明度 */}
                 <linearGradient id="login-rainbow-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#ff6b6b" stopOpacity="0.4" />
-                  <stop offset="20%" stopColor="#ffd93d" stopOpacity="0.4" />
-                  <stop offset="40%" stopColor="#6bcb77" stopOpacity="0.4" />
-                  <stop offset="60%" stopColor="#4d96ff" stopOpacity="0.4" />
-                  <stop offset="80%" stopColor="#9b59b6" stopOpacity="0.4" />
-                  <stop offset="100%" stopColor="#ff6b6b" stopOpacity="0.4" />
+                  <stop offset="0%" stopColor="#ff6b6b" stopOpacity="0.6" />
+                  <stop offset="20%" stopColor="#ffd93d" stopOpacity="0.6" />
+                  <stop offset="40%" stopColor="#6bcb77" stopOpacity="0.6" />
+                  <stop offset="60%" stopColor="#4d96ff" stopOpacity="0.6" />
+                  <stop offset="80%" stopColor="#9b59b6" stopOpacity="0.6" />
+                  <stop offset="100%" stopColor="#ff6b6b" stopOpacity="0.6" />
                 </linearGradient>
                 <clipPath id="login-hex-clip">
                   <g transform="translate(-229.94 -109.41)">
@@ -117,8 +117,8 @@ export default function LoginPage({ onAuthorized }: LoginPageProps) {
                 {/* 高光 */}
                 <rect width="369.53" height="123.9" fill="white" opacity="0.15" />
               </g>
-              {/* 六边形描边 */}
-              <g transform="translate(-229.94 -109.41)" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round">
+              {/* 六边形描边 - 增强可见性 */}
+              <g transform="translate(-229.94 -109.41)" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round">
                 <path d="M243.31,288.55h42.82c4.49,0,8.71-2.18,11.31-5.84l115.29-162.35c3.26-4.59-0.02-10.95-5.65-10.95h-45.96c-6.74,0-13.06,3.26-16.96,8.76L234.83,272.12C229.94,279.01,234.86,288.55,243.31,288.55z" />
                 <path d="M398.58,357.28h-49.56c-4.51,0-8.73-2.19-11.33-5.87l-36.66-51.92c-3.24-4.59,0.04-10.93,5.67-10.93h49.56c4.51,0,8.73,2.19,11.33,5.87l36.66,51.92C407.49,350.94,404.2,357.28,398.58,357.28z" />
                 <path d="M586.1,178.14h-42.82c-4.49,0-8.71,2.18-11.31,5.84L416.67,346.33c-3.26,4.59,0.02,10.95,5.65,10.95h45.96c6.74,0,13.06-3.26,16.96-8.76l109.33-153.95C599.47,187.68,594.55,178.14,586.1,178.14z" />
