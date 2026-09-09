@@ -361,7 +361,7 @@ export default function SettingsPanel() {
                 <span className="text-green-400">✓</span>
                 当前保存目录：<span className="font-medium text-white">{saveDirName}</span>
               </p>
-              <p className="mt-1 text-white/40">每次生成会自动创建以"产品名_时间"命名的子文件夹</p>
+              <p className="mt-1 text-white/40">相同产品名称自动归类到同一文件夹，用时间戳区分不同批次</p>
             </div>
           )}
           <label className="flex items-center gap-3 cursor-pointer">

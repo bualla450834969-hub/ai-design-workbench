@@ -179,9 +179,8 @@ export async function saveResultsToDirectory(
   const permission = await handle.requestPermission({ mode: "readwrite" });
   if (permission !== "granted") return { saved: 0, total: cards.length };
 
-  // 创建子目录（产品名_时间戳）
-  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  const folderName = `${productName || "未命名产品"}_${timestamp}`;
+  // 创建子目录（只用产品名称，相同产品自动归类到同一文件夹）
+  const folderName = (productName || "未命名产品").replace(/[\\/:*?"<>|]/g, "_");
   let subDirHandle: FileSystemDirectoryHandle;
   try {
     subDirHandle = await handle.getDirectoryHandle(folderName, { create: true });
@@ -189,13 +188,16 @@ export async function saveResultsToDirectory(
     subDirHandle = handle; // 如果创建失败，保存到根目录
   }
 
+  // 用时间戳区分不同批次，避免文件名冲突
+  const batchTimestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+
   let saved = 0;
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
     if (!card?.imageUrl) continue;
 
     const ext = card.imageUrl.startsWith("data:image/jpeg") ? "jpg" : "png";
-    const filename = `${String(i + 1).padStart(2, "0")}_${card.title || `方案${i + 1}`}.${ext}`.replace(/[\\/:*?"<>|]/g, "_");
+    const filename = `${batchTimestamp}_${String(i + 1).padStart(2, "0")}_${card.title || `方案${i + 1}`}.${ext}`.replace(/[\\/:*?"<>|]/g, "_");
 
     try {
       let blob: Blob;
