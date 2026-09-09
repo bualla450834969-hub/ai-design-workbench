@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getDeviceId, getLicenseCode, saveLicenseCode } from "@/utils";
 
 interface LoginPageProps {
@@ -8,9 +8,32 @@ interface LoginPageProps {
 }
 
 export default function LoginPage({ onAuthorized }: LoginPageProps) {
-  const [licenseCode, setLicenseCode] = useState("");
+  const [licenseCode, setLicenseCode] = useState(() => getLicenseCode());
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState("");
+  const [isAutoChecking, setIsAutoChecking] = useState(false);
+
+  // 页面加载时，如果有保存的授权码，自动验证
+  useEffect(() => {
+    const savedCode = getLicenseCode();
+    if (savedCode) {
+      setIsAutoChecking(true);
+      const deviceId = getDeviceId();
+      fetch("/api/license/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ licenseCode: savedCode, deviceId }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.valid) {
+            onAuthorized();
+          }
+        })
+        .catch(() => {})
+        .finally(() => setIsAutoChecking(false));
+    }
+  }, [onAuthorized]);
 
   const handleVerify = async () => {
     if (!licenseCode.trim()) {
@@ -157,13 +180,13 @@ export default function LoginPage({ onAuthorized }: LoginPageProps) {
 
           <button
             onClick={handleVerify}
-            disabled={isVerifying}
+            disabled={isVerifying || isAutoChecking}
             className="w-full rounded-lg bg-white/10 hover:bg-white/20 border border-white/25 hover:border-white/40 py-3 text-sm font-medium text-white/90 tracking-[0.2em] disabled:opacity-50 transition-all hover:shadow-[0_0_30px_rgba(255,255,255,0.15)]"
           >
-            {isVerifying ? (
+            {isVerifying || isAutoChecking ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
-                验证中...
+                {isAutoChecking ? "自动验证中..." : "验证中..."}
               </span>
             ) : (
               "验证并进入 / ENTER"
