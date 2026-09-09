@@ -24,6 +24,7 @@ import {
   PRODUCT_KIT_PRESETS,
 } from "@/constants";
 import { fileToDataUrl, getProviderConfig, getDeviceId, addHistoryRecord, compressImageToThumbnail, loadCostConfig, estimateCost, getLicenseCode } from "@/utils";
+import { isAutoSaveEnabled, saveResultsToDirectory } from "@/utils/file-save";
 import LocalEditMask from "@/components/LocalEditMask";
 import { useToast } from "@/components/Toast";
 
@@ -336,6 +337,19 @@ export default function GeneratePanel({
         percent: 100,
         completed: totalCompleted,
       }));
+
+      // 自动保存到本地目录
+      if (isAutoSaveEnabled()) {
+        const allCards = allResults.flatMap((r) => r.cards);
+        saveResultsToDirectory(allCards, productName || "未命名产品", "批量生成")
+          .then(({ saved, total }) => {
+            if (saved > 0) {
+              showToast(`已保存 ${saved}/${total} 张图片到本地目录`, "success");
+            }
+          })
+          .catch(() => {});
+      }
+
       onBatchComplete(allResults);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -516,6 +530,18 @@ export default function GeneratePanel({
                 referenceImageRoles: referenceImages.map((r) => r.role),
                 ...genContext,
               });
+
+              // 自动保存到本地目录
+              if (isAutoSaveEnabled()) {
+                saveResultsToDirectory(resultCards, productName || "未命名产品", templateLabel)
+                  .then(({ saved, total }) => {
+                    if (saved > 0) {
+                      showToast(`已保存 ${saved}/${total} 张图片到本地目录`, "success");
+                    }
+                  })
+                  .catch(() => {});
+              }
+
               setGeneration((prev) => ({
                 ...prev,
                 isGenerating: false,

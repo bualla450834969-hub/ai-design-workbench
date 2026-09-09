@@ -3,6 +3,14 @@
 import { useState, useEffect } from "react";
 import { loadCostConfig, saveCostConfig, type CostConfig, getLicenseCode, saveLicenseCode, getDeviceId } from "@/utils";
 import { useToast } from "@/components/Toast";
+import {
+  isFileSystemAccessSupported,
+  selectSaveDirectory,
+  getSavedDirectoryName,
+  clearSavedDirectory,
+  isAutoSaveEnabled,
+  setAutoSaveEnabled,
+} from "@/utils/file-save";
 
 const PROVIDERS = [
   { id: "geeknow", name: "GeekAI (默认)", desc: "推荐，支持 Gemini 画图" },
@@ -38,9 +46,54 @@ export default function SettingsPanel() {
   });
   const [costConfig, setCostConfig] = useState<CostConfig>(() => loadCostConfig());
   const [licenseCode, setLicenseCode] = useState(() => getLicenseCode());
-  const [licenseStatus, setLicenseStatus] = useState<{ valid: boolean; deviceCount: number; maxDevices: number; thisDeviceBound: boolean } | null>(null);
+  const [licenseStatus, setLicenseStatus] = useState<{ valid: boolean; deviceCount: number; maxDevices: number; thisDeviceBound: boolean; unlimited?: boolean } | null>(null);
   const [isVerifyingLicense, setIsVerifyingLicense] = useState(false);
+  const [saveDirName, setSaveDirName] = useState<string | null>(null);
+  const [autoSave, setAutoSave] = useState(() => isAutoSaveEnabled());
+  const [isSelectingDir, setIsSelectingDir] = useState(false);
   const { showToast } = useToast();
+
+  // 加载保存的目录名称
+  useEffect(() => {
+    getSavedDirectoryName().then(setSaveDirName);
+  }, []);
+
+  const handleSelectDirectory = async () => {
+    if (!isFileSystemAccessSupported()) {
+      showToast("当前浏览器不支持本地目录保存，请使用 Chrome 或 Edge", "error");
+      return;
+    }
+    setIsSelectingDir(true);
+    try {
+      const name = await selectSaveDirectory();
+      if (name) {
+        setSaveDirName(name);
+        showToast(`已选择保存目录：${name}`, "success");
+      }
+    } catch (e) {
+      showToast("选择目录失败，请重试", "error");
+    } finally {
+      setIsSelectingDir(false);
+    }
+  };
+
+  const handleClearDirectory = async () => {
+    await clearSavedDirectory();
+    setSaveDirName(null);
+    setAutoSave(false);
+    setAutoSaveEnabled(false);
+    showToast("已清除保存目录", "success");
+  };
+
+  const handleToggleAutoSave = (enabled: boolean) => {
+    if (enabled && !saveDirName) {
+      showToast("请先选择保存目录", "error");
+      return;
+    }
+    setAutoSave(enabled);
+    setAutoSaveEnabled(enabled);
+    showToast(enabled ? "已开启自动保存" : "已关闭自动保存", "success");
+  };
 
   const updateCostConfig = (field: keyof CostConfig, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -277,6 +330,52 @@ export default function SettingsPanel() {
             />
           </div>
           <p className="text-[10px] text-white/40">计算公式：1次方案模型 + N张画图模型（N=生成数量）</p>
+        </div>
+      </section>
+
+      {/* 本地文件保存 */}
+      <section className="glass-card rounded-2xl p-4">
+        <h2 className="mb-1 text-sm font-semibold text-white">本地文件保存</h2>
+        <p className="mb-3 text-xs text-white/50">生成完成后自动保存图片到本地目录，关闭页面也不会丢失（需 Chrome/Edge 浏览器）</p>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSelectDirectory}
+              disabled={isSelectingDir}
+              className="rounded-lg bg-indigo-500/80 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all"
+            >
+              {isSelectingDir ? "选择中..." : saveDirName ? "更换目录" : "选择保存目录"}
+            </button>
+            {saveDirName && (
+              <button
+                onClick={handleClearDirectory}
+                className="rounded-lg border border-white/20 px-3 py-2 text-sm text-white/70 hover:bg-white/5 transition-all"
+              >
+                清除
+              </button>
+            )}
+          </div>
+          {saveDirName && (
+            <div className="rounded-lg bg-white/5 p-3 text-xs text-white/70">
+              <p className="flex items-center gap-2">
+                <span className="text-green-400">✓</span>
+                当前保存目录：<span className="font-medium text-white">{saveDirName}</span>
+              </p>
+              <p className="mt-1 text-white/40">每次生成会自动创建以"产品名_时间"命名的子文件夹</p>
+            </div>
+          )}
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoSave}
+              onChange={(e) => handleToggleAutoSave(e.target.checked)}
+              className="w-4 h-4 rounded accent-indigo-500"
+            />
+            <span className="text-sm text-white/80">生成完成后自动保存到本地目录</span>
+          </label>
+          {!isFileSystemAccessSupported() && (
+            <p className="text-xs text-amber-400/80">⚠ 当前浏览器不支持目录选择，请使用 Chrome 或 Edge 浏览器</p>
+          )}
         </div>
       </section>
 

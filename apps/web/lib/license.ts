@@ -6,13 +6,33 @@ const MAX_DEVICES_PER_LICENSE = 3;
 // 内存存储（开发用）
 const memoryStore = new Map<string, Set<string>>(); // licenseCode -> Set<deviceId>
 
-// 获取授权码列表（从环境变量）
+// 获取普通授权码列表（从环境变量）
 function getValidLicenseCodes(): string[] {
   const codes = process.env.LICENSE_CODES || process.env.APP_ACCESS_CODE || "";
   return codes
     .split(",")
     .map((c) => c.trim().toUpperCase())
     .filter(Boolean);
+}
+
+// 获取无限设备授权码列表（测试员授权码）
+function getUnlimitedLicenseCodes(): string[] {
+  const codes = process.env.UNLIMITED_LICENSE_CODES || process.env.TESTER_LICENSE_CODES || "";
+  return codes
+    .split(",")
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+// 获取所有有效授权码（普通 + 无限设备）
+function getAllValidLicenseCodes(): string[] {
+  return [...getValidLicenseCodes(), ...getUnlimitedLicenseCodes()];
+}
+
+// 检查授权码是否是无限设备的
+function isUnlimitedLicense(licenseCode: string): boolean {
+  const code = licenseCode.trim().toUpperCase();
+  return getUnlimitedLicenseCodes().includes(code);
 }
 
 // 检查是否配置了 Redis
@@ -80,15 +100,15 @@ async function isDeviceBound(licenseCode: string, deviceId: string): Promise<boo
 }
 
 // 验证授权码并绑定设备
-// 返回: { valid: boolean; message: string; bound?: boolean }
 export async function verifyAndBindLicense(
   licenseCode: string,
   deviceId: string
-): Promise<{ valid: boolean; message: string; alreadyBound?: boolean }> {
+): Promise<{ valid: boolean; message: string; alreadyBound?: boolean; unlimited?: boolean }> {
   const code = licenseCode.trim().toUpperCase();
+  const unlimited = isUnlimitedLicense(code);
 
   // 1. 检查授权码是否有效
-  const validCodes = getValidLicenseCodes();
+  const validCodes = getAllValidLicenseCodes();
   if (!validCodes.includes(code)) {
     return { valid: false, message: "授权码无效，请检查后重试" };
   }
@@ -96,16 +116,18 @@ export async function verifyAndBindLicense(
   // 2. 检查设备是否已绑定此授权码
   const alreadyBound = await isDeviceBound(code, deviceId);
   if (alreadyBound) {
-    return { valid: true, message: "授权验证通过", alreadyBound: true };
+    return { valid: true, message: "授权验证通过", alreadyBound: true, unlimited };
   }
 
-  // 3. 检查授权码已绑定的设备数量
-  const boundDevices = await getBoundDevices(code);
-  if (boundDevices.length >= MAX_DEVICES_PER_LICENSE) {
-    return {
-      valid: false,
-      message: `该授权码已绑定 ${MAX_DEVICES_PER_LICENSE} 个设备，达到上限`,
-    };
+  // 3. 检查授权码已绑定的设备数量（无限设备授权码跳过此检查）
+  if (!unlimited) {
+    const boundDevices = await getBoundDevices(code);
+    if (boundDevices.length >= MAX_DEVICES_PER_LICENSE) {
+      return {
+        valid: false,
+        message: `该授权码已绑定 ${MAX_DEVICES_PER_LICENSE} 个设备，达到上限`,
+      };
+    }
   }
 
   // 4. 绑定设备
@@ -114,7 +136,12 @@ export async function verifyAndBindLicense(
     return { valid: false, message: "设备绑定失败，请稍后重试" };
   }
 
-  return { valid: true, message: "授权验证通过，设备已绑定", alreadyBound: false };
+  return {
+    valid: true,
+    message: unlimited ? "测试员授权验证通过（无限设备）" : "授权验证通过，设备已绑定",
+    alreadyBound: false,
+    unlimited,
+  };
 }
 
 // 仅验证（不绑定），用于生成前检查
@@ -123,8 +150,9 @@ export async function verifyLicenseOnly(
   deviceId: string
 ): Promise<{ valid: boolean; message: string }> {
   const code = licenseCode.trim().toUpperCase();
+  const unlimited = isUnlimitedLicense(code);
 
-  const validCodes = getValidLicenseCodes();
+  const validCodes = getAllValidLicenseCodes();
   if (!validCodes.includes(code)) {
     return { valid: false, message: "授权码无效" };
   }
@@ -135,9 +163,12 @@ export async function verifyLicenseOnly(
   }
 
   // 未绑定但还有名额，也算有效（生成时会自动绑定）
-  const boundDevices = await getBoundDevices(code);
-  if (boundDevices.length >= MAX_DEVICES_PER_LICENSE) {
-    return { valid: false, message: "授权码设备数已达上限" };
+  // 无限设备授权码跳过设备数检查
+  if (!unlimited) {
+    const boundDevices = await getBoundDevices(code);
+    if (boundDevices.length >= MAX_DEVICES_PER_LICENSE) {
+      return { valid: false, message: "授权码设备数已达上限" };
+    }
   }
 
   return { valid: true, message: "授权验证通过" };
@@ -147,12 +178,25 @@ export async function verifyLicenseOnly(
 export async function getLicenseStatus(
   licenseCode: string,
   deviceId: string
-): Promise<{ valid: boolean; deviceCount: number; maxDevices: number; thisDeviceBound: boolean }> {
+): Promise<{
+  valid: boolean;
+  deviceCount: number;
+  maxDevices: number;
+  thisDeviceBound: boolean;
+  unlimited: boolean;
+}> {
   const code = licenseCode.trim().toUpperCase();
-  const validCodes = getValidLicenseCodes();
+  const unlimited = isUnlimitedLicense(code);
+  const validCodes = getAllValidLicenseCodes();
 
   if (!validCodes.includes(code)) {
-    return { valid: false, deviceCount: 0, maxDevices: MAX_DEVICES_PER_LICENSE, thisDeviceBound: false };
+    return {
+      valid: false,
+      deviceCount: 0,
+      maxDevices: MAX_DEVICES_PER_LICENSE,
+      thisDeviceBound: false,
+      unlimited: false,
+    };
   }
 
   const boundDevices = await getBoundDevices(code);
@@ -161,7 +205,8 @@ export async function getLicenseStatus(
   return {
     valid: true,
     deviceCount: boundDevices.length,
-    maxDevices: MAX_DEVICES_PER_LICENSE,
+    maxDevices: unlimited ? Infinity : MAX_DEVICES_PER_LICENSE,
     thisDeviceBound,
+    unlimited,
   };
 }
