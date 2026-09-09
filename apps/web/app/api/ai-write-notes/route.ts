@@ -81,7 +81,24 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
       const err = await response.text();
       console.error("[AI Write Notes] API error:", response.status, err);
-      return NextResponse.json({ error: `AI 调用失败: ${response.status} ${err.slice(0, 200)}` }, { status: response.status });
+      
+      let errorMsg = `AI 调用失败: ${response.status}`;
+      if (response.status === 429) {
+        errorMsg = "API 请求过于频繁，请稍后再试（限流 429）";
+      } else if (response.status === 401 || response.status === 403) {
+        errorMsg = "API Key 无效或已过期，请检查设置";
+      } else if (response.status === 404) {
+        errorMsg = "模型不存在或 API 地址错误，请检查供应商配置";
+      } else {
+        try {
+          const errJson = JSON.parse(err);
+          errorMsg = errJson.error?.message || errJson.message || `AI 调用失败: ${response.status}`;
+        } catch {
+          errorMsg = `AI 调用失败: ${response.status} ${err.slice(0, 100)}`;
+        }
+      }
+      
+      return NextResponse.json({ error: errorMsg }, { status: response.status });
     }
 
     const data = await response.json();
