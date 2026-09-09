@@ -1,0 +1,12 @@
+{
+  "envId": "eva-123-d4g29o557f0e8727b",
+  "region": "ap-shanghai",
+  "functionRoot": "functions",
+  "functions": [],
+  "storage": {
+    "uploadPath": "/uploads"
+  },
+  "cloudrun": {
+    "name": "ai-design-workbench"
+  }
+}
