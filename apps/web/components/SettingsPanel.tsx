@@ -13,10 +13,10 @@ import {
 } from "@/utils/file-save";
 
 const PROVIDERS = [
-  { id: "geeknow", name: "GeekAI (默认)", desc: "推荐，支持 Gemini 画图" },
-  { id: "apiyi", name: "API易", desc: "OpenAI 兼容接口" },
-  { id: "aihubmix", name: "AIHubMix", desc: "多模型聚合" },
-  { id: "custom", name: "自定义", desc: "任意 OpenAI 兼容接口" },
+  { id: "geeknow", name: "GeekAI (默认)", desc: "推荐，支持 Gemini 画图", website: "https://www.geeknow.top" },
+  { id: "apiyi", name: "API易", desc: "OpenAI 兼容接口", website: "https://api.apiyi.com" },
+  { id: "aihubmix", name: "AIHubMix", desc: "多模型聚合", website: "https://aihubmix.com" },
+  { id: "custom", name: "自定义", desc: "任意 OpenAI 兼容接口", website: "" },
 ];
 
 const BRAIN_MODEL_OPTIONS = [
@@ -238,6 +238,17 @@ export default function SettingsPanel() {
                     <div>
                       <div className="text-sm font-medium text-white">{p.name}</div>
                       <div className="text-xs text-white/50">{p.desc}</div>
+                      {p.website && (
+                        <a
+                          href={p.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
+                        >
+                          前往官网获取 API Key →
+                        </a>
+                      )}
                     </div>
                     {hasKey && (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">已配置</span>
