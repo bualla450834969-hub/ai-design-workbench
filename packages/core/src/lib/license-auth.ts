@@ -67,8 +67,18 @@ function configuredAccessCodes() {
     .split(/[\n,;，；]+/)
     .map((code) => code.trim())
     .filter(Boolean);
+  
+  // 也读取无限设备授权码（测试员授权码）
+  const unlimitedCodes = envString("UNLIMITED_LICENSE_CODES")
+    .split(/[\n,;，；]+/)
+    .map((code) => code.trim())
+    .filter(Boolean);
+  const testerCodes = envString("TESTER_LICENSE_CODES")
+    .split(/[\n,;，；]+/)
+    .map((code) => code.trim())
+    .filter(Boolean);
 
-  return Array.from(new Set([legacyCode, ...codeList].filter(Boolean)));
+  return Array.from(new Set([legacyCode, ...codeList, ...unlimitedCodes, ...testerCodes].filter(Boolean)));
 }
 
 function normalizeCode(code: string) {
