@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type TabId = "generate" | "results" | "history" | "favorites" | "settings";
 
@@ -23,6 +23,16 @@ export default function AppNavigation({
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
 }) {
+  // 品牌区轮播：logo 和文字交替显示
+  const [brandSlide, setBrandSlide] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBrandSlide((prev) => (prev + 1) % 2);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <>
       {/* 移动端：底部 Tab 栏 - 毛玻璃 */}
@@ -49,15 +59,29 @@ export default function AppNavigation({
 
       {/* 桌面端：左侧边栏 - 毛玻璃 */}
       <aside className="hidden lg:flex lg:w-56 lg:flex-col lg:fixed lg:left-4 lg:top-4 lg:bottom-4 lg:rounded-2xl lg:bg-white/[0.06] lg:backdrop-blur-2xl lg:border lg:border-white/10 lg:shadow-xl lg:p-5 lg:z-40">
-        <div className="mb-8 px-2">
-          <div className="flex items-center gap-3">
-            {/* 六边形全息 logo */}
-            <div className="relative w-10 h-7 shrink-0">
-              <img src="/logo.svg" alt="璃火矩创" className="w-full h-full object-contain" />
+        <div className="mb-8 px-2 h-24 flex items-center justify-center">
+          {/* 品牌区轮播 */}
+          <div className="relative w-full h-full">
+            {/* Slide 1: Logo */}
+            <div
+              className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ${
+                brandSlide === 0
+                  ? "opacity-100 scale-100"
+                  : "opacity-0 scale-90 pointer-events-none"
+              }`}
+            >
+              <img src="/logo.svg" alt="璃火矩创" className="w-16 h-16 object-contain" />
             </div>
-            <div className="flex flex-col justify-center">
-              <h1 className="text-base font-bold text-white leading-tight">璃火矩创</h1>
-              <p className="text-xs text-white/50 mt-0.5 leading-tight">工业设计AI</p>
+            {/* Slide 2: 文字 */}
+            <div
+              className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ${
+                brandSlide === 1
+                  ? "opacity-100 scale-100"
+                  : "opacity-0 scale-90 pointer-events-none"
+              }`}
+            >
+              <h1 className="text-xl font-bold text-white tracking-widest">璃火矩创</h1>
+              <p className="text-xs text-white/50 mt-1 tracking-[0.3em]">工业设计AI</p>
             </div>
           </div>
         </div>
