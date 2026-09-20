@@ -1,6 +1,8 @@
 "use client";
 
 import type { ResultCard } from "@/types";
+import { downloadImage } from "@/utils/file-save";
+import { useToast } from "@/components/Toast";
 
 export type GenerationContext = {
   productName?: string;
@@ -27,6 +29,7 @@ export default function CardDetailModal({
   onClose: () => void;
   context?: GenerationContext;
 }) {
+  const { showToast } = useToast();
   const hasContext =
     context &&
     (context.productImageThumbnails?.length ||
@@ -191,11 +194,13 @@ export default function CardDetailModal({
           {/* 下载按钮 */}
           {card.imageUrl && (
             <button
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = card.imageUrl!;
-                a.download = `${card.title}.png`;
-                a.click();
+              onClick={async () => {
+                const success = await downloadImage(card.imageUrl!, `${card.title || "设计方案"}.png`);
+                if (success) {
+                  showToast("图片已开始下载", "success");
+                } else {
+                  showToast("下载失败，请重试", "error");
+                }
               }}
               className="w-full rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-700"
             >

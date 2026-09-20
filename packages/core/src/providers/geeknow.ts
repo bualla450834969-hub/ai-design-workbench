@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+﻿import { createHash } from "node:crypto";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -62,7 +62,7 @@ function envString(name: string, fallback = "") {
   return (process.env[name] || fallback).trim();
 }
 
-const GEEKNOW_CURRENT_ORIGIN = "https://www.geeknow.top";
+const GEEKNOW_CURRENT_ORIGIN = "https://api.geeknow.ai";
 
 export function normalizeGeekNowEndpoint(endpoint: string) {
   return endpoint.replace(
@@ -1040,7 +1040,7 @@ async function generateGeekNowGeminiImage({
   prompt: string;
   referenceImages: string[];
   imageSize?: "2K" | "4K";
-  imageAspectRatio?: "1:1" | "3:2";
+  imageAspectRatio?: "1:1" | "3:2" | "2:3" | "4:3" | "3:4" | "16:9" | "9:16";
   preserveInputAspectRatio?: boolean;
   signal?: AbortSignal;
 }) {
@@ -1260,7 +1260,7 @@ export async function generateGeekNowImageEdit({
   prompt: string;
   referenceImages: string[];
   imageSize?: "2K" | "4K";
-  imageAspectRatio?: "1:1" | "3:2";
+  imageAspectRatio?: "1:1" | "3:2" | "2:3" | "4:3" | "3:4" | "16:9" | "9:16";
   preserveInputAspectRatio?: boolean;
   signal?: AbortSignal;
 }) {

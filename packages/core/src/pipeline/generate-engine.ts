@@ -1543,6 +1543,7 @@ async function generateProviderImageEdit({
   prompt,
   referenceImages,
   imageSize,
+  imageAspectRatio,
   preserveInputAspectRatio,
   customProviderBaseUrl,
   customProviderName,
@@ -1554,6 +1555,7 @@ async function generateProviderImageEdit({
   prompt: string;
   referenceImages: string[];
   imageSize?: "2K" | "4K";
+  imageAspectRatio?: "1:1" | "3:2" | "2:3" | "4:3" | "3:4" | "16:9" | "9:16";
   preserveInputAspectRatio?: boolean;
   customProviderBaseUrl?: string;
   customProviderName?: string;
@@ -1573,7 +1575,7 @@ async function generateProviderImageEdit({
     });
   }
   if (provider === "geeknow") {
-    return generateGeekNowImageEdit({ apiKey, model, prompt, referenceImages, imageSize, preserveInputAspectRatio, signal });
+    return generateGeekNowImageEdit({ apiKey, model, prompt, referenceImages, imageSize, imageAspectRatio, preserveInputAspectRatio, signal });
   }
   if (provider === "apiyi") {
     return generateAPIYIImageEdit({ apiKey, model, prompt, referenceImages, imageSize, preserveInputAspectRatio, signal });
@@ -2329,6 +2331,8 @@ function buildCommerceFallbackCards({
   category,
   notes,
   applicationMode,
+  commerceKitPreset,
+  commerceDetailVisualStyle,
   commercePlatform,
   commerceLocale,
   commerceResolution,
@@ -2341,6 +2345,8 @@ function buildCommerceFallbackCards({
   category?: string;
   notes?: string;
   applicationMode: Exclude<ApplicationMode, "appearance-redesign">;
+  commerceKitPreset?: "auto" | "six-view" | "scene" | "white-bg" | "detail" | "lifestyle";
+  commerceDetailVisualStyle?: "auto" | "minimal" | "tech" | "premium" | "chinese" | "fresh" | "energetic";
   commercePlatform: CommercePlatform;
   commerceLocale: CommerceLocale;
   commerceResolution: CommerceResolution;
@@ -2348,6 +2354,45 @@ function buildCommerceFallbackCards({
   commerceCopyDensity: CommerceCopyDensity;
   commerceDetailModules: CommerceDetailModule[];
 }): PlannedCard[] {
+  // 根据预设选择不同的角色分配
+  const sixViewRoles = [
+    ["正面视图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 1/7: FRONT ELEVATION. Camera at 0° azimuth, directly facing the product's main operating face. Buttons, display, spout, and all front controls clearly visible. This is the reference view for all other angles. Pure #FFFFFF white background. No perspective. No text. No labels. Product only with soft contact shadow."],
+    ["背面视图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 2/7: REAR ELEVATION. Camera at 180° azimuth, directly facing the product's BACK side. Power inlet, rear vents, back panel visible. NO front controls or spout visible — this is the OPPOSITE side from view 1 (front). Pure #FFFFFF white background. No perspective. No text. No labels. Product only with soft contact shadow."],
+    ["左侧视图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 3/7: LEFT SIDE ELEVATION. Camera at 270° azimuth, positioned to the LEFT of the product looking RIGHT. The front operating face points to the LEFT edge of this frame. You see the product's LEFT side panel. Pure #FFFFFF white background. No perspective. No text. No labels. Product only with soft contact shadow."],
+    ["右侧视图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 4/7: RIGHT SIDE ELEVATION. Camera at 90° azimuth, positioned to the RIGHT of the product looking LEFT. The front operating face points to the RIGHT edge of this frame. This is the MIRROR OPPOSITE of view 3 (left side). If view 3 showed the spout on the left edge, this view MUST show the spout on the RIGHT edge. Do NOT copy view 3 — show the opposite side. Pure #FFFFFF white background. No perspective. No text. No labels. Product only with soft contact shadow."],
+    ["顶部视图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 5/7: TOP PLAN VIEW. Camera at 90° elevation, directly above looking straight down. Top surface, lid, top controls, hopper visible. Pure #FFFFFF white background. No perspective. No text. No labels. Product only with soft contact shadow."],
+    ["底部视图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 6/7: BOTTOM ELEVATION. Camera at -90° elevation, directly below looking straight up. Bottom surface, feet, base plate visible. Pure #FFFFFF white background. No perspective. No text. No labels. Product only with soft contact shadow."],
+    ["纯正交正面主图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 7/7: PERFECT ORTHOGRAPHIC FRONT HERO SHOT. Camera at EXACTLY 0° azimuth and 0° elevation, perfectly perpendicular to the product's front face. ZERO perspective distortion, zero lens distortion, zero vanishing points. This is a precise technical orthographic elevation, like a CAD front view or engineering blueprint. Product centered, filling the frame, with even flat studio lighting. Pure #FFFFFF white background. No text, no labels, no annotations, no marketing copy. Product only with soft contact shadow beneath it. This is the hero front view for technical documentation."]
+  ] as const;
+
+  const sceneRoles = [
+    ["真实使用场景", "realistic use-context image with the product as the unmistakable visual focus"],
+    ["生活场景展示", "product in a lifestyle environment that matches its category and use case"],
+    ["场景细节", "close-up of product in use, showing interaction and context"],
+    ["氛围场景", "moody atmospheric scene with product as hero element"]
+  ] as const;
+
+  const whiteBgRoles = [
+    ["白底主图", "clean marketplace-compliant white-background hero image, centered product, complete silhouette"],
+    ["白底侧面", "white background side view of the product, centered, even lighting"],
+    ["白底细节", "white background detail close-up of the product"],
+    ["白底多角度", "white background three-quarter view of the product"]
+  ] as const;
+
+  const detailRoles = [
+    ["核心细节特写", "close-up of the most important real material, interface or functional detail"],
+    ["材质细节", "macro shot showing product material texture and finish"],
+    ["结构细节", "close-up showing product structure and assembly"],
+    ["功能细节", "close-up showing product function and operation"]
+  ] as const;
+
+  const lifestyleRoles = [
+    ["生活方式主图", "lifestyle hero image with person using the product naturally"],
+    ["使用场景", "product being used in a realistic everyday scenario"],
+    ["人物互动", "hands or person interacting with the product"],
+    ["氛围生活图", "warm lifestyle atmosphere with product as focal point"]
+  ] as const;
+
   const productKitRoles = [
     ["合规白底主图", "clean marketplace-compliant white-background hero image, centered product, complete silhouette"],
     ["同源视角商品展示", "commercial product presentation using only a camera/view visibly supported by an uploaded product image; never invent an unsupported hidden side"],
@@ -2356,7 +2401,8 @@ function buildCommerceFallbackCards({
     ["尺度与功能展示", "clear scale and function composition without inventing specifications or claims"],
     ["配件与包装展示", "organized product, included accessories and packaging presentation; omit anything not visible or provided"]
   ] as const;
-  const detailRoles = [
+
+  const detailPageRoles = [
     ["品牌首屏主视觉", "wide premium commerce hero section with clear product focus and reserved copy space"],
     ["核心卖点模块", "single core benefit module grounded only in visible product evidence and user-provided facts"],
     ["结构与材质细节", "credible close-up module explaining real structure, material and workmanship"],
@@ -2364,10 +2410,40 @@ function buildCommerceFallbackCards({
     ["场景价值模块", "lifestyle value scene with accurate product proportions and no unsupported claim"],
     ["收尾购买理由", "clean closing commerce module summarizing only supported advantages with reserved copy space"]
   ] as const;
-  const roles = applicationMode === "product-kit" ? productKitRoles : detailRoles;
+
+  // 根据预设选择角色
+  let roles: readonly (readonly [string, string])[];
+  if (applicationMode === "detail-page") {
+    roles = detailPageRoles;
+  } else if (commerceKitPreset === "six-view") {
+    roles = sixViewRoles;
+  } else if (commerceKitPreset === "scene") {
+    roles = sceneRoles;
+  } else if (commerceKitPreset === "white-bg") {
+    roles = whiteBgRoles;
+  } else if (commerceKitPreset === "detail") {
+    roles = detailRoles;
+  } else if (commerceKitPreset === "lifestyle") {
+    roles = lifestyleRoles;
+  } else {
+    roles = productKitRoles; // auto
+  }
   const requirement = compactText(notes?.trim() || "No additional user requirement.", 620);
   const platform = commercePlatformLabel(commercePlatform);
   const language = commerceLocaleLabel(commerceLocale);
+
+  // 视觉风格 prompt 映射
+  const visualStylePrompts: Record<string, string> = {
+    minimal: "Visual style: minimalist — abundant white space, monochrome black/white/gray palette, clean typography hierarchy, subtle shadows, no decorative elements.",
+    tech: "Visual style: tech/futuristic — dark navy/black background, blue/cyan accent lighting, subtle grid lines, glowing effects, sleek modern atmosphere.",
+    premium: "Visual style: premium/luxury — deep charcoal background, gold/silver accents, rich material textures (marble, metal), dramatic lighting, elegant atmosphere.",
+    chinese: "Visual style: Chinese guochao — traditional Chinese elements and patterns, red/gold palette, oriental aesthetics, ink wash hints, cultural motifs.",
+    fresh: "Visual style: fresh/clean — bright and airy, light pastel palette, natural elements (plants, wood, sunlight), soft shadows, refreshing atmosphere.",
+    energetic: "Visual style: energetic/youthful — vibrant bold colors, dynamic compositions, diagonal lines, playful gradients, modern pop culture feel.",
+  };
+  const visualStylePrompt = commerceDetailVisualStyle && commerceDetailVisualStyle !== "auto"
+    ? visualStylePrompts[commerceDetailVisualStyle] || ""
+    : "";
 
   return Array.from({ length: count }, (_, index) => {
     const [fallbackTitle, fallbackRole] = roles[index % roles.length];
@@ -2386,15 +2462,21 @@ function buildCommerceFallbackCards({
         [
           `Create commerce asset ${index + 1}/${count} for ${productName || FALLBACK_PRODUCT_NAME}; category: ${category?.trim() || "infer only from the uploaded image"}.`,
           `Asset role: ${role}.`,
+          commerceKitPreset === "six-view"
+            ? "ORTHOGRAPHIC PROJECTION REQUIRED: This is a technical orthographic elevation/plan view, NOT a perspective render. Use parallel projection with zero vanishing points, no foreshortening, no lens distortion, no perspective convergence. The product must appear as flat elevation drawing with true-to-scale proportions, like an engineering blueprint or CAD front/side/top view. Camera must be perfectly perpendicular to the product face. PURE WHITE BACKGROUND: absolutely clean #FFFFFF white background, no gradients, no shadows on background, no environment, no scene. NO TEXT WHATSOEVER: do not render any text, labels, callouts, dimension lines, annotations, watermarks, marketing copy, or characters of any language in the image. Product only, centered, with soft contact shadow beneath it. SIX DISTINCT VIEWS: Each of the 6 images must show a DIFFERENT side of the product — front, back, left, right, top, bottom. Left and right side views must be mirror opposites, NOT identical. Do not repeat the same angle for multiple images."
+            : "",
           `Target platform: ${platform}. Intended copy language: ${language}.`,
           commercePlatformProfilePrompt(commercePlatform),
           commerceDetailStylePrompt(commerceDetailStyle),
+          visualStylePrompt,
           commerceCopyDensityPrompt(commerceCopyDensity),
           commerceLocaleWritingRule(commerceLocale),
           commerceResolutionRule(commerceResolution),
           `User requirement: ${requirement}`,
           "COMMERCE PRODUCT LAYER LOCK: treat the uploaded product photographs as immutable identity plates, not loose references. Preserve the exact broad category, fine-grained subtype/form factor, characteristic working length/reach, silhouette, proportions, part topology/count, component positions, controls, openings, seams, material/color zones, labels, surface details and functional relationships. Never turn a long-body/long-lance/long-handle subtype into a short one or cross any equivalent subtype boundary.",
-          "VIEW EVIDENCE LOCK: use only a product angle actually visible in the uploaded product images. If a requested layout would require an unsupported hidden side, keep the nearest source-supported view and change only crop, placement, background, scene, lighting and copy layout. Never hallucinate a new angle by regenerating the product.",
+          commerceKitPreset === "six-view"
+            ? "SIX-VIEW ORTHOGRAPHIC INFERENCE: For this six-view orthographic set, you MAY infer hidden sides (back, left, right, top, bottom) from the visible product geometry using consistent industrial design logic. Maintain exact proportions, part count, material zones and design language across all six views. Each view must be a true orthographic elevation/plan with zero perspective. If a detail is truly ambiguous, make a reasonable inference consistent with the visible design rather than omitting the view."
+            : "VIEW EVIDENCE LOCK: use only a product angle actually visible in the uploaded product images. If a requested layout would require an unsupported hidden side, keep the nearest source-supported view and change only crop, placement, background, scene, lighting and copy layout. Never hallucinate a new angle by regenerating the product.",
           "Do not redesign, recolor, replace, simplify, beautify into another product, invent accessories, specifications, certifications, logos or marketing claims.",
           applicationMode === "detail-page"
             ? "Render a platform-native detail-page visual module with deliberate image-to-copy hierarchy and a clean copy-safe area. Do not render customer-facing text, labels or pseudo-text inside the image; the application will add editable copy after generation."
@@ -2506,7 +2588,8 @@ function buildCommerceFinalImagePrompt({
   commerceDetailModule,
   variantIndex,
   totalCount,
-  promptMaxChars
+  promptMaxChars,
+  commerceKitPreset
 }: {
   plannedPrompt: string;
   productName: string;
@@ -2524,6 +2607,7 @@ function buildCommerceFinalImagePrompt({
   variantIndex: number;
   totalCount: number;
   promptMaxChars: number;
+  commerceKitPreset?: string;
 }) {
   return compactText(
     [
@@ -2533,7 +2617,9 @@ function buildCommerceFinalImagePrompt({
         ? `INPUT ROLE MAP: Images 1-${productImageCount} are immutable PRODUCT IDENTITY sources. Images ${productImageCount + 1}-${productImageCount + styleReferenceImageCount} are STYLE / LAYOUT REFERENCES only.`
         : `INPUT ROLE MAP: Images 1-${productImageCount} are immutable PRODUCT IDENTITY sources. No style/layout reference was supplied.`,
       "COMMERCE PRODUCT LAYER LOCK — HIGHEST VISUAL PRIORITY: the uploaded product images are immutable identity plates. Reuse the exact sellable product identity; do not reinterpret or redraw its geometry. Preserve broad category, fine-grained subtype/form factor, characteristic working length/reach, long-versus-short configuration, outer contour, width/height/depth proportions, part topology/count, component coordinates, controls, openings, seams, attachments, material/color zones, texture, markings and functional relationships. Never cross into another subtype even when the broad product noun stays the same.",
-      "SOURCE-SUPPORTED VIEW ONLY: use only a camera/view visibly present in the uploaded product images. Do not rotate into an unseen side, invent hidden geometry, change perspective into a different model, or use a rendering/style reference as the product. When a requested role lacks a supported angle, keep the nearest uploaded pose and create variety through crop, scale, placement, scene, light, background and typography around the locked product.",
+      commerceKitPreset === "six-view"
+        ? "SIX-VIEW ORTHOGRAPHIC INFERENCE: For this six-view orthographic set, you MAY infer hidden sides (back, left, right, top, bottom) from the visible product geometry using consistent industrial design logic. Maintain exact proportions, part count, material zones and design language across all six views. Each view must be a true orthographic elevation/plan with zero perspective. If a detail is truly ambiguous, make a reasonable inference consistent with the visible design rather than omitting the view."
+        : "SOURCE-SUPPORTED VIEW ONLY: use only a camera/view visibly present in the uploaded product images. Do not rotate into an unseen side, invent hidden geometry, change perspective into a different model, or use a rendering/style reference as the product. When a requested role lacks a supported angle, keep the nearest uploaded pose and create variety through crop, scale, placement, scene, light, background and typography around the locked product.",
       styleReferenceImageCount
         ? "STYLE / LAYOUT REFERENCE FIREWALL: borrow only abstract composition rhythm, whitespace, visual hierarchy, background atmosphere, lighting mood, crop density and module cadence. Never transfer the reference product, category, silhouette, proportions, parts, accessories, packaging, brand, logo, wording, claims, prices, promotional elements or exact object placement. All factual content must come from the product sources and user text."
         : "",
@@ -3891,6 +3977,8 @@ export async function POST(req: Request) {
                     category: body.category,
                     notes: effectiveNotes,
                     count,
+                    commerceKitPreset: body.commerceKitPreset,
+                    commerceDetailVisualStyle: body.commerceDetailVisualStyle,
                     commercePlatform,
                     commerceLocale,
                     commerceResolution,
@@ -3954,6 +4042,9 @@ export async function POST(req: Request) {
             total
           });
 
+          // 六视图模式：保存左视图图片，用于生成右视图时作为镜像参考
+          let leftViewImageForMirror: any = null;
+
           const generatePlannedCard = async (
             plannedCard: PlannedCard,
             index: number
@@ -3996,7 +4087,8 @@ export async function POST(req: Request) {
                     commerceDetailModule: commerceDetailModules[index],
                     variantIndex: index,
                     totalCount: total,
-                    promptMaxChars
+                    promptMaxChars,
+                    commerceKitPreset: body.commerceKitPreset
                   })
                 : buildFinalImagePrompt({
                     plannedPrompt: plannedCard.prompt,
@@ -4038,6 +4130,20 @@ export async function POST(req: Request) {
                     styleMode,
                     promptMaxChars
                   });
+
+              // 六视图模式：生成右视图时，把已生成的左视图作为镜像参考
+              const isSixViewRightSide = commerceApplicationMode === "product-kit" &&
+                body.commerceKitPreset === "six-view" && index === 3 && leftViewImageForMirror;
+              const leftViewRef = isSixViewRightSide
+                ? (leftViewImageForMirror?.base64 || leftViewImageForMirror?.url || "")
+                : "";
+
+              // 六视图模式：生成右视图时，追加镜像参考说明
+              let finalPromptForGeneration = finalImagePrompt;
+              if (isSixViewRightSide && leftViewImageForMirror) {
+                finalPromptForGeneration = finalImagePrompt +
+                  " MIRROR REFERENCE: The LAST reference image in the input is the LEFT SIDE view (view 3/6) that was already generated. You MUST generate the RIGHT SIDE view as its exact mirror opposite. If the left view shows the spout/controls on the left edge, your right view must show them on the RIGHT edge. Do NOT copy the left view — flip it horizontally conceptually and show the opposite side panel. The left reference image is only for understanding the product's 3D form, not to be replicated as-is.";
+              }
               if (!commerceApplicationMode && !editRegionImage) {
                 const requiresMultiViewProductAuthority =
                   variationLevel > 0 && appearanceRendererProductImages.length > 1;
@@ -4099,7 +4205,11 @@ export async function POST(req: Request) {
                 }
               }
               const providerReferenceImages = commerceApplicationMode
-                ? [...productImages, ...referenceImages].slice(0, MAX_TOTAL_INPUT_IMAGES)
+                ? [
+                    ...productImages,
+                    ...referenceImages,
+                    ...(leftViewRef ? [leftViewRef] : [])
+                  ].slice(0, MAX_TOTAL_INPUT_IMAGES)
                 : editRegionImage
                   ? (usesLocalPatch
                       ? [editRegionPatch, editRegionPatchMask]
@@ -4111,19 +4221,47 @@ export async function POST(req: Request) {
                       ...appearanceRendererProductImages,
                       ...(colorPalette ? [colorPalette.dataUrl] : [])
                     ].slice(0, MAX_TOTAL_INPUT_IMAGES);
-              const generatedImage = await generateProviderImageEdit({
-                provider: apiProvider,
-                apiKey,
-                model: imageModel,
-                prompt: finalImagePrompt,
-                referenceImages: providerReferenceImages,
-                imageSize: commerceApplicationMode && commerceResolution !== "standard" ? commerceResolution : undefined,
-                preserveInputAspectRatio: Boolean(editRegionImage) || variationLevel === 0,
-                customProviderBaseUrl,
-                customProviderName,
-                signal: req.signal
-              });
-              confirmImageSubmission();
+              // 图片生成失败自动重试（最多2次重试，总共3次尝试）
+              let generatedImage: any = null;
+              let lastError: any = null;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                  throwIfAborted(req.signal);
+                  if (attempt > 0) {
+                    emitStage({
+                      phase: "image_generating",
+                      message: `第 ${index + 1} 张重试中（第 ${attempt + 1}/3 次尝试）...`,
+                      progress: Math.min(88, 42 + Math.round((cardsCount / Math.max(1, total)) * 42)),
+                      total,
+                      cardsCount
+                    });
+                    await new Promise((r) => setTimeout(r, 1500)); // 重试前等待1.5秒
+                  }
+                  generatedImage = await generateProviderImageEdit({
+                    provider: apiProvider,
+                    apiKey,
+                    model: imageModel,
+                    prompt: finalPromptForGeneration,
+                    referenceImages: providerReferenceImages,
+                    imageSize: commerceApplicationMode && commerceResolution !== "standard" ? commerceResolution : undefined,
+                    imageAspectRatio: commerceApplicationMode && body.aspectRatio && !editRegionImage && variationLevel !== 0 ? body.aspectRatio : undefined,
+                    preserveInputAspectRatio: Boolean(editRegionImage) || variationLevel === 0,
+                    customProviderBaseUrl,
+                    customProviderName,
+                    signal: req.signal
+                  });
+                  confirmImageSubmission();
+                  break; // 成功，跳出重试循环
+                } catch (err: any) {
+                  lastError = err;
+                  if (isAbortError(err) || req.signal.aborted) throw createAbortError();
+                  if (attempt < 2) {
+                    console.warn(`第 ${index + 1} 张图片第 ${attempt + 1} 次尝试失败，准备重试:`, err?.message || err);
+                  } else {
+                    throw err; // 3次都失败，抛出错误
+                  }
+                }
+              }
               const image = commerceApplicationMode && commerceResolution !== "standard"
                 ? await ensureGeneratedImageResolution(generatedImage, commerceResolution, req.signal)
                 : generatedImage;
@@ -4150,6 +4288,11 @@ export async function POST(req: Request) {
                       }
                     : undefined,
               };
+              // 六视图模式：保存左视图图片，用于生成右视图时作为镜像参考
+              if (commerceApplicationMode === "product-kit" && body.commerceKitPreset === "six-view" && index === 2) {
+                leftViewImageForMirror = image;
+                console.log("六视图：左视图已保存，将用于右视图镜像参考");
+              }
               cardsCount += 1;
               emitStage({
                 phase: "image_returning",

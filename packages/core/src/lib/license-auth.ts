@@ -78,7 +78,10 @@ function configuredAccessCodes() {
     .map((code) => code.trim())
     .filter(Boolean);
 
-  return Array.from(new Set([legacyCode, ...codeList, ...unlimitedCodes, ...testerCodes].filter(Boolean)));
+  // 内置默认授权码（打包后也能用）
+  const defaultCodes = ["LIHUO88888888", "TESTER88888888"];
+
+  return Array.from(new Set([legacyCode, ...codeList, ...unlimitedCodes, ...testerCodes, ...defaultCodes].filter(Boolean)));
 }
 
 function normalizeCode(code: string) {

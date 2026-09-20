@@ -1,27 +1,93 @@
 {
-  "name": "@workbench/web",
+  "name": "ai-design-workbench",
   "version": "1.0.0",
   "private": true,
+  "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bualla450834969-hub/ai-design-workbench.git"
+  },
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "electron:dev": "electron .",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "electron:publish": "npm run build && electron-builder --win --publish always"
   },
   "dependencies": {
     "@workbench/core": "*",
+    "electron-updater": "^6.8.9",
     "next": "15.5.21",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.3",
+    "wait-on": "^9.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "autoprefixer": "^10.4.20",
+    "electron": "44.3.0",
+    "electron-builder": "^26.15.3",
     "postcss": "^8.5.3",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.8.3"
+    "tailwindcss": "^3.4.17"
+  },
+  "build": {
+    "appId": "com.pyraluma.industrial-design-ai",
+    "productName": "璃火矩创-工业设计AI",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      ".next/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules",
+        "to": "node_modules",
+        "filter": [
+          "next/**/*",
+          "@next/**/*",
+          "react/**/*",
+          "react-dom/**/*",
+          "wait-on/**/*",
+          "electron-updater/**/*",
+          "@workbench/**/*",
+          "typescript/**/*"
+        ]
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "bualla450834969-hub",
+      "repo": "ai-design-workbench"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/favicon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "璃火矩创-工业设计AI"
+    }
   }
 }

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect } from "react";
 import type {
@@ -17,7 +17,9 @@ import {
   COMMERCE_PLATFORMS,
   COMMERCE_LOCALES,
   COMMERCE_RESOLUTIONS,
+  ASPECT_RATIOS,
   DETAIL_STYLES,
+  DETAIL_VISUAL_STYLES,
   COPY_DENSITIES,
   REFERENCE_ROLE_LABELS,
   LOCAL_EDIT_INTENT_LABELS,
@@ -35,6 +37,8 @@ export default function GeneratePanel({
   onBatchComplete,
   pendingConfig,
   onConfigApplied,
+  pendingProductImage,
+  onProductImageApplied,
 }: {
   generation: GenerationState;
   setGeneration: React.Dispatch<React.SetStateAction<GenerationState>>;
@@ -42,6 +46,8 @@ export default function GeneratePanel({
   onBatchComplete: (groups: BatchResultGroup[]) => void;
   pendingConfig: PendingGenerateConfig;
   onConfigApplied: () => void;
+  pendingProductImage?: string | null;
+  onProductImageApplied?: () => void;
 }) {
   const [productName, setProductName] = useState("");
   const [variation, setVariation] = useState(65);
@@ -65,8 +71,11 @@ export default function GeneratePanel({
   const [commerceLocale, setCommerceLocale] = useState("zh-CN");
   const [commerceResolution, setCommerceResolution] = useState("standard");
   const [detailStyle, setDetailStyle] = useState("platform-native");
+  const [detailVisualStyle, setDetailVisualStyle] = useState("auto");
   const [copyDensity, setCopyDensity] = useState("balanced");
+  const [aspectRatio, setAspectRatio] = useState("1:1");
   const [kitPreset, setKitPreset] = useState("auto");
+  const [imageSize, setImageSize] = useState<"standard" | "2K" | "4K">("standard");
   const [isAiWriting, setIsAiWriting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +92,30 @@ export default function GeneratePanel({
       onConfigApplied();
     }
   }, [pendingConfig, onConfigApplied]);
+
+  // 处理"以此为原图"功能：从历史/结果页跳转过来时自动加载图片
+  useEffect(() => {
+    if (pendingProductImage && onProductImageApplied) {
+      // 下载图片并转成 base64
+      (async () => {
+        try {
+          // 如果是代理URL，直接fetch
+          const response = await fetch(pendingProductImage);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            setProductImages((prev) => [...prev, { dataUrl, name: "从历史复用的图片.png" }]);
+            showToast("已加载为原图", "success");
+          };
+          reader.readAsDataURL(blob);
+        } catch (e) {
+          showToast("加载图片失败", "error");
+        }
+        onProductImageApplied();
+      })();
+    }
+  }, [pendingProductImage, onProductImageApplied]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -151,6 +184,7 @@ export default function GeneratePanel({
         templateId: params.templateId,
         variationLevel: params.variationLevel,
         count: params.count,
+        // imageSize: imageSize !== 'standard' ? imageSize : undefined, // 临时禁用
         notes: params.notes.trim() || undefined,
         productImages: productImages.map((img) => ({ dataUrl: img.dataUrl, name: img.name })),
         referenceImages: referenceImages.length > 0 ? referenceImages.map((img) => ({
@@ -260,6 +294,9 @@ export default function GeneratePanel({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // 保存产品名称快照，避免生成过程中状态变化导致自动保存时名称丢失
+    const productNameSnapshot = productName.trim();
+
     setBatchTotal(enabledGroups.length);
     setBatchCurrent(0);
     setGeneration({
@@ -312,7 +349,7 @@ export default function GeneratePanel({
           productImages.slice(0, 3).map((img) => compressImageToThumbnail(img.dataUrl))
         );
         addHistoryRecord({
-          productName: productName || "未命名产品",
+          productName: productNameSnapshot || "未命名产品",
           templateId: group.templateId,
           templateLabel,
           variationLevel: group.variationLevel,
@@ -341,13 +378,18 @@ export default function GeneratePanel({
       // 自动保存到本地目录
       if (isAutoSaveEnabled()) {
         const allCards = allResults.flatMap((r) => r.cards);
-        saveResultsToDirectory(allCards, productName || "未命名产品", "批量生成")
-          .then(({ saved, total }) => {
+        saveResultsToDirectory(allCards, productNameSnapshot || "未命名产品", "批量生成")
+          .then(({ saved, total, error }) => {
             if (saved > 0) {
               showToast(`已保存 ${saved}/${total} 张图片到本地目录`, "success");
+            } else {
+              showToast(`自动保存失败：${error || "未知错误"}。请在设置页重新选择保存目录`, "error");
             }
           })
-          .catch(() => {});
+          .catch((err) => {
+            console.error("自动保存失败:", err);
+            showToast(`自动保存失败：${err.message || "未知错误"}`, "error");
+          });
       }
 
       onBatchComplete(allResults);
@@ -384,6 +426,9 @@ export default function GeneratePanel({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // 保存产品名称快照，避免生成过程中状态变化导致自动保存时名称丢失
+    const productNameSnapshot = productName.trim();
+
     setGeneration({
       isGenerating: true,
       phase: "starting",
@@ -416,6 +461,7 @@ export default function GeneratePanel({
           templateId,
           variationLevel: variation,
           count,
+          // imageSize: imageSize !== 'standard' ? imageSize : undefined, // 临时禁用
           notes: (notes.trim() || (applicationMode === "product-kit" && kitPreset !== "auto"
             ? PRODUCT_KIT_PRESETS.find((p) => p.value === kitPreset)?.notes || ""
             : "")).trim() || undefined,
@@ -435,10 +481,13 @@ export default function GeneratePanel({
             editRegionInstruction: editRegionInstruction.trim() || undefined,
           } : {}),
           applicationMode: applicationMode !== "appearance-redesign" ? applicationMode : undefined,
+          commerceKitPreset: applicationMode === "product-kit" && kitPreset !== "auto" ? kitPreset : undefined,
           commercePlatform: applicationMode !== "appearance-redesign" ? commercePlatform : undefined,
           commerceLocale: applicationMode !== "appearance-redesign" ? commerceLocale : undefined,
           commerceResolution: applicationMode !== "appearance-redesign" ? commerceResolution : undefined,
+          aspectRatio: applicationMode !== "appearance-redesign" ? aspectRatio : undefined,
           commerceDetailStyle: applicationMode === "detail-page" ? detailStyle : undefined,
+          commerceDetailVisualStyle: applicationMode === "detail-page" && detailVisualStyle !== "auto" ? detailVisualStyle : undefined,
           commerceCopyDensity: applicationMode === "detail-page" ? copyDensity : undefined,
         }),
       });
@@ -509,7 +558,7 @@ export default function GeneratePanel({
                 productImages.slice(0, 3).map((img) => compressImageToThumbnail(img.dataUrl))
               );
               const genContext = {
-                productName: productName || "未命名产品",
+                productName: productNameSnapshot || "未命名产品",
                 templateLabel,
                 variationLevel: variation,
                 notes,
@@ -533,13 +582,18 @@ export default function GeneratePanel({
 
               // 自动保存到本地目录
               if (isAutoSaveEnabled()) {
-                saveResultsToDirectory(resultCards, productName || "未命名产品", templateLabel)
-                  .then(({ saved, total }) => {
+                saveResultsToDirectory(resultCards, productNameSnapshot || "未命名产品", templateLabel)
+                  .then(({ saved, total, error }) => {
                     if (saved > 0) {
                       showToast(`已保存 ${saved}/${total} 张图片到本地目录`, "success");
+                    } else {
+                      showToast(`自动保存失败：${error || "未知错误"}。请在设置页重新选择保存目录`, "error");
                     }
                   })
-                  .catch(() => {});
+                  .catch((err) => {
+                    console.error("自动保存失败:", err);
+                    showToast(`自动保存失败：${err.message || "未知错误"}`, "error");
+                  });
               }
 
               setGeneration((prev) => ({
@@ -600,32 +654,59 @@ export default function GeneratePanel({
     }
 
     setIsAiWriting(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120秒超时
+
     try {
+      showToast("AI 正在分析图片，约需 30-60 秒...", "info");
+
+      // 先压缩图片，避免请求体过大导致超时
+      const compressedImages = await Promise.all(
+        productImages.slice(0, 3).map(async (img) => {
+          try {
+            const compressed = await compressImageToThumbnail(img.dataUrl, 1024, 0.8);
+            return { dataUrl: compressed };
+          } catch {
+            return { dataUrl: img.dataUrl };
+          }
+        })
+      );
+
       const response = await fetch("/api/ai-write-notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productImages: productImages.map((img) => ({ dataUrl: img.dataUrl })),
+          productImages: compressedImages,
           productName,
           apiKey: providerConfig.apiKey,
           provider: providerConfig.provider,
           brainModel: providerConfig.brainModel,
           baseUrl: providerConfig.baseUrl,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error || "生成失败");
+        throw new Error(err.error || `HTTP ${response.status}`);
       }
 
       const data = await response.json();
       if (data.notes) {
         setNotes(data.notes);
         showToast("AI 已生成设计需求", "success");
+      } else {
+        throw new Error("AI 返回内容为空");
       }
     } catch (err: any) {
-      showToast(`AI 编写失败：${err.message}`, "error");
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        showToast("AI 编写超时（超过120秒），请重试或检查网络", "error");
+      } else {
+        showToast(`AI 编写失败：${err.message}`, "error");
+      }
     } finally {
       setIsAiWriting(false);
     }
@@ -764,8 +845,7 @@ export default function GeneratePanel({
         </section>
       )}
 
-      {/* 设计参考图 - 仅外观重构模式 */}
-      {applicationMode === "appearance-redesign" && (
+      {/* 设计参考图 - 所有模式都显示 */}
       <section className="glass-card rounded-2xl p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white">设计参考图（可选）</h2>
@@ -814,7 +894,6 @@ export default function GeneratePanel({
           造型=提取外形特征 · 配色=强制使用参考图颜色 · 材质=表面质感 · 风格=整体调性
         </p>
       </section>
-      )}
 
       {/* 基础设置 */}
       <section className="glass-card rounded-2xl p-4 space-y-4">
@@ -844,7 +923,7 @@ export default function GeneratePanel({
               {isAiWriting ? (
                 <>
                   <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-300/50 border-t-indigo-400" />
-                  AI 编写中...
+                  AI 分析中...
                 </>
               ) : (
                 <>✦ AI 智能编写</>
@@ -884,12 +963,12 @@ export default function GeneratePanel({
 
         <div>
           <label className="mb-1.5 block text-xs font-medium text-white/70">生成数量</label>
-          <div className="flex gap-2">
-            {[1, 2, 3, 4].map((n) => (
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 4, 6, 7, 10, 20, 50, 100].map((n) => (
               <button
                 key={n}
                 onClick={() => setCount(n)}
-                className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                   count === n ? "bg-indigo-500/80 text-white" : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
                 }`}
               >
@@ -897,6 +976,25 @@ export default function GeneratePanel({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* 分辨率选择 */}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-white/70">输出分辨率</label>
+          <div className="flex gap-2">
+            {COMMERCE_RESOLUTIONS.map((res) => (
+              <button
+                key={res.value}
+                onClick={() => setImageSize(res.value as "standard" | "2K" | "4K")}
+                className={`flex-1 rounded-lg py-2 text-xs font-medium transition-all ${
+                  imageSize === res.value ? "bg-indigo-500/80 text-white" : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
+                }`}
+              >
+                {res.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[10px] text-white/40">分辨率越高，生成时间越长，费用越高</p>
         </div>
       </section>
 
@@ -915,7 +1013,13 @@ export default function GeneratePanel({
                 {PRODUCT_KIT_PRESETS.map((preset) => (
                   <button
                     key={preset.value}
-                    onClick={() => setKitPreset(preset.value)}
+                    onClick={() => {
+                      setKitPreset(preset.value);
+                      // 选择六视图时自动调整生成数量为7（6视图+纯正交正面主图）
+                      if (preset.value === "six-view") {
+                        setCount(7);
+                      }
+                    }}
                     className={`rounded-lg border px-3 py-2 text-left transition-all ${
                       kitPreset === preset.value
                         ? "border-indigo-400/50 bg-indigo-500/20"
@@ -932,7 +1036,7 @@ export default function GeneratePanel({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-white/70">电商平台</label>
               <select
@@ -969,35 +1073,72 @@ export default function GeneratePanel({
                 ))}
               </select>
             </div>
+            <div className="col-span-3">
+              <label className="mb-1 block text-xs font-medium text-white/70">图片比例</label>
+              <select
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value)}
+                className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
+              >
+                {ASPECT_RATIOS.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}（{r.desc}）</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {applicationMode === "detail-page" && (
-            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-white/70">详情页风格</label>
-                <select
-                  value={detailStyle}
-                  onChange={(e) => setDetailStyle(e.target.value)}
-                  className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
-                >
-                  {DETAIL_STYLES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
+            <>
+              <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-white/70">详情页风格</label>
+                  <select
+                    value={detailStyle}
+                    onChange={(e) => setDetailStyle(e.target.value)}
+                    className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
+                  >
+                    {DETAIL_STYLES.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-white/70">文案密度</label>
+                  <select
+                    value={copyDensity}
+                    onChange={(e) => setCopyDensity(e.target.value)}
+                    className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
+                  >
+                    {COPY_DENSITIES.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-white/70">文案密度</label>
-                <select
-                  value={copyDensity}
-                  onChange={(e) => setCopyDensity(e.target.value)}
-                  className="input-field w-full rounded-lg px-3 py-2.5 text-sm"
-                >
-                  {COPY_DENSITIES.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
+
+              {/* 视觉风格选择 */}
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <label className="mb-2 block text-xs font-medium text-white/70">视觉风格</label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {DETAIL_VISUAL_STYLES.map((style) => (
+                    <button
+                      key={style.value}
+                      onClick={() => setDetailVisualStyle(style.value)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-all ${
+                        detailVisualStyle === style.value
+                          ? "border-indigo-400/50 bg-indigo-500/20"
+                          : "border-white/10 hover:border-white/20 bg-white/[0.03]"
+                      }`}
+                    >
+                      <div className={`text-xs font-medium ${detailVisualStyle === style.value ? "text-white" : "text-white/70"}`}>
+                        {style.label}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-white/40 line-clamp-1">{style.desc}</div>
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           <p className="text-[10px] text-white/40">

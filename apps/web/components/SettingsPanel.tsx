@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { loadCostConfig, saveCostConfig, type CostConfig, getLicenseCode, saveLicenseCode, getDeviceId } from "@/utils";
@@ -20,17 +20,47 @@ const PROVIDERS = [
 ];
 
 const BRAIN_MODEL_OPTIONS = [
+  // Gemini 系列
   { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro（推荐）" },
+  { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
   { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
   { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash（快）" },
-  { value: "gpt-4o", label: "GPT-4o" },
+  // GPT 系列
+  { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+  { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+  { value: "gpt-5.5", label: "GPT-5.5（推荐）" },
+  { value: "gpt-5.5-pro", label: "GPT-5.5 Pro" },
+  { value: "gpt-5.4", label: "GPT-5.4" },
+  { value: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
   { value: "gpt-4.1", label: "GPT-4.1" },
+  { value: "gpt-4o", label: "GPT-4o" },
+  // Claude 系列
+  { value: "claude-opus-5", label: "Claude Opus 5" },
+  { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
+  // 国产模型
+  { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+  { value: "kimi-k3", label: "Kimi K3" },
+  { value: "glm-5.2", label: "GLM-5.2" },
 ];
 
 const IMAGE_MODEL_OPTIONS = [
+  // Gemini 图片系列
   { value: "gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image（推荐）" },
+  { value: "gemini-3.1-flash-lite-image", label: "Gemini 3.1 Flash Lite（快）" },
+  { value: "gemini-3-pro-image-preview", label: "Gemini 3 Pro Image" },
   { value: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image" },
+  { value: "gemini-2.5-flash-image-preview", label: "Gemini 2.5 Flash Image Preview" },
+  { value: "gemini-2.0-flash-preview-image-generation", label: "Gemini 2.0 Flash Image" },
+  // GPT 图片系列
+  { value: "gpt-image-2-pro", label: "GPT Image 2 Pro" },
+  { value: "gpt-image-2", label: "GPT Image 2" },
+  { value: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst" },
+  { value: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare" },
   { value: "gpt-image-1", label: "GPT Image 1" },
+  // 豆包系列
+  { value: "doubao-seedream-5-0-260128", label: "豆包 Seedream 5.0" },
+  { value: "doubao-seedream-4-5-251128", label: "豆包 Seedream 4.5" },
+  { value: "doubao-seedream-4-0-250828", label: "豆包 Seedream 4.0" },
 ];
 
 export default function SettingsPanel() {
@@ -45,6 +75,10 @@ export default function SettingsPanel() {
     }
   });
   const [costConfig, setCostConfig] = useState<CostConfig>(() => loadCostConfig());
+  const [tripoApiKey, setTripoApiKey] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("tripoApiKey") || "";
+  });
   const [licenseCode, setLicenseCode] = useState(() => getLicenseCode());
   const [licenseStatus, setLicenseStatus] = useState<{ valid: boolean; deviceCount: number; maxDevices: number; thisDeviceBound: boolean; unlimited?: boolean } | null>(null);
   const [isVerifyingLicense, setIsVerifyingLicense] = useState(false);
@@ -100,6 +134,11 @@ export default function SettingsPanel() {
     const next = { ...costConfig, [field]: numValue };
     setCostConfig(next);
     saveCostConfig(next);
+  };
+
+  const updateTripoApiKey = (value: string) => {
+    setTripoApiKey(value);
+    localStorage.setItem("tripoApiKey", value);
   };
 
   const handleVerifyLicense = async () => {
@@ -314,6 +353,34 @@ export default function SettingsPanel() {
         </div>
       </section>
 
+      {false && (
+      <section className="glass-card rounded-2xl p-4">
+        <h2 className="mb-1 text-sm font-semibold text-white">3D 模型生成</h2>
+        <p className="mb-3 text-xs text-white/50">配置 Tripo AI API Key，可根据多视图图片生成3D模型（.glb格式）</p>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-white/70">Tripo API Key</label>
+            <input
+              type="password"
+              value={tripoApiKey}
+              onChange={(e) => updateTripoApiKey(e.target.value)}
+              placeholder="输入你的 Tripo API Key"
+              className="input-field w-full rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
+          <a
+            href="https://www.tripo3d.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block text-xs text-indigo-300 hover:text-indigo-200 transition-colors"
+          >
+            前往 Tripo 官网获取 API Key →
+          </a>
+          <p className="text-[10px] text-white/40">配置自动保存到本地浏览器，仅用于3D模型生成</p>
+        </div>
+      </section>
+      )}
+
       <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-1 text-sm font-semibold text-white">费用估算</h2>
         <p className="mb-3 text-xs text-white/50">配置模型单价后，生成按钮会实时显示预估费用（仅供参考，实际以供应商计费为准）</p>
@@ -366,7 +433,7 @@ export default function SettingsPanel() {
               </button>
             )}
           </div>
-          {saveDirName && (
+          {saveDirName && saveDirName !== "1" ? (
             <div className="rounded-lg bg-white/5 p-3 text-xs text-white/70">
               <p className="flex items-center gap-2">
                 <span className="text-green-400">✓</span>
@@ -374,7 +441,14 @@ export default function SettingsPanel() {
               </p>
               <p className="mt-1 text-white/40">相同产品名称自动归类到同一文件夹，用时间戳区分不同批次</p>
             </div>
-          )}
+          ) : autoSave ? (
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
+              <p className="flex items-center gap-2">
+                <span>⚠</span>
+                保存目录已失效，请重新选择保存目录
+              </p>
+            </div>
+          ) : null}
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"

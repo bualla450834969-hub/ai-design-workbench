@@ -1,22 +1,43 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+// 将跨域图片URL转为本地代理URL
+function getProxyImageUrl(url: string): string {
+  if (!url) return url;
+  // 已经是代理URL或者本地URL，直接返回
+  if (url.startsWith("/api/") || url.startsWith("data:")) return url;
+  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
+import { useState, useEffect } from "react";
 import type { ResultCard, HistoryRecord, PendingGenerateConfig } from "@/types";
 import { MAX_HISTORY } from "@/constants";
 import { loadHistory, deleteHistoryRecord, clearHistory, formatTime } from "@/utils";
+import { downloadImage } from "@/utils/file-save";
 import CardDetailModal, { type GenerationContext } from "@/components/CardDetailModal";
 import ImageLightbox from "@/components/ImageLightbox";
 import { useToast } from "@/components/Toast";
 
-export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config: PendingGenerateConfig) => void }) {
+export default function HistoryPanel({ visible, onReuseConfig, onUseAsOriginal }: { visible?: boolean; onReuseConfig: (config: PendingGenerateConfig) => void; onUseAsOriginal?: (imageUrl: string) => void }) {
   const [records, setRecords] = useState<HistoryRecord[]>(() => loadHistory());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<ResultCard | null>(null);
   const [selectedContext, setSelectedContext] = useState<GenerationContext | undefined>(undefined);
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
+  const [isGenerating3D, setIsGenerating3D] = useState(false);
+  const [progress3D, setProgress3D] = useState(0);
+  const [model3DUrl, setModel3DUrl] = useState<string | null>(null);
+  const [error3D, setError3D] = useState<string | null>(null);
+  const [generatingRecordId, setGeneratingRecordId] = useState<string | null>(null);
   const { showToast } = useToast();
 
   const refresh = () => setRecords(loadHistory());
+
+  // 当面板变为可见时，重新加载历史数据
+  useEffect(() => {
+    if (visible) {
+      refresh();
+    }
+  }, [visible]);
 
   const handleDelete = (id: string) => {
     if (confirm("确定删除这条记录吗？")) {
@@ -34,12 +55,99 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
     }
   };
 
-  const handleDownload = (card: ResultCard) => {
+  const handleDownload = async (card: ResultCard) => {
     if (card.imageUrl) {
-      const a = document.createElement("a");
-      a.href = card.imageUrl;
-      a.download = `${card.title || "设计方案"}.png`;
-      a.click();
+      const success = await downloadImage(card.imageUrl, `${card.title || "设计方案"}.png`);
+      if (success) {
+        showToast("图片已开始下载", "success");
+      } else {
+        showToast("下载失败，请重试", "error");
+      }
+    }
+  };
+
+  const generate3DModel = async (record: HistoryRecord) => {
+    const apiKey = localStorage.getItem("tripoApiKey") || "";
+    if (!apiKey) {
+      showToast("请先在设置页面配置 Tripo API Key", "error");
+      return;
+    }
+
+    const cards = record.cards;
+    if (cards.length < 4) {
+      showToast("需要至少4张图片才能生成3D模型", "error");
+      return;
+    }
+
+    // Tripo multiview-to-model 需要的顺序是 [front, left, back, right]
+    // 我们的六视图顺序是 [正面, 背面, 左侧, 右侧, 顶部, 底部, 纯正交正面]
+    const getUrl = (i: number): string => cards[i]?.imageUrl || "";
+    const images: string[] = [
+      getUrl(0), getUrl(2), getUrl(1), getUrl(3)
+    ].filter((u): u is string => !!u);
+
+    if (images.length < 4) {
+      showToast("需要至少4张有效图片才能生成3D模型", "error");
+      return;
+    }
+
+    setIsGenerating3D(true);
+    setGeneratingRecordId(record.id);
+    setProgress3D(0);
+    setError3D(null);
+    setModel3DUrl(null);
+
+    try {
+      const res = await fetch("/api/3d/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, images }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "提交失败");
+
+      const taskId = data.taskId;
+      showToast("3D模型生成任务已提交，约需1-3分钟", "info");
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/3d/status?apiKey=${encodeURIComponent(apiKey)}&taskId=${taskId}`);
+          const statusData = await statusRes.json();
+
+          if (statusData.progress) {
+            setProgress3D(statusData.progress);
+          }
+
+          if (statusData.status === "success") {
+            clearInterval(pollInterval);
+            setModel3DUrl(statusData.modelUrl);
+            setIsGenerating3D(false);
+            showToast("3D模型生成成功！", "success");
+          } else if (statusData.status === "failed" || statusData.status === "cancelled") {
+            clearInterval(pollInterval);
+            setError3D(statusData.error || "生成失败");
+            setIsGenerating3D(false);
+          }
+        } catch (e) {
+          // 忽略轮询错误
+        }
+      }, 3000);
+
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setIsGenerating3D((prev) => {
+          if (prev) {
+            setError3D("生成超时，请稍后重试");
+            return false;
+          }
+          return prev;
+        });
+      }, 300000);
+
+    } catch (error) {
+      setError3D(error instanceof Error ? error.message : "生成失败");
+      setIsGenerating3D(false);
+      showToast(error instanceof Error ? error.message : "3D模型生成失败", "error");
     }
   };
 
@@ -79,7 +187,7 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
                   {record.cards.slice(0, 4).map((card, i) => (
                     <div key={i} className="flex-1 overflow-hidden">
                       {card.imageUrl ? (
-                        <img src={card.imageUrl} alt="" className="h-full w-full object-cover" />
+                        <img src={getProxyImageUrl(card.imageUrl)} alt="" className="h-full w-full object-cover" />
                       ) : (
                         <div className="h-full w-full bg-gray-200" />
                       )}
@@ -110,9 +218,20 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
                 <div className="border-t border-gray-100 bg-gray-50 p-3 space-y-3">
                   {/* 生成上下文 */}
                   <div className="rounded-lg bg-white p-3 space-y-2">
-                    <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between">
                       <h4 className="text-xs font-semibold text-gray-700">生成上下文</h4>
-                      <span className="text-[10px] text-gray-400">{formatTime(record.createdAt)}</span>
+                      <div className="flex items-center gap-2">
+                        {record.cards.length >= 4 && (
+                          <button
+                            onClick={() => generate3DModel(record)}
+                            disabled={isGenerating3D && generatingRecordId === record.id}
+                            className="rounded-md bg-purple-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                          >
+                            {isGenerating3D && generatingRecordId === record.id ? `3D生成中 ${progress3D}%` : "生成3D模型"}
+                          </button>
+                        )}
+                        <span className="text-[10px] text-gray-400">{formatTime(record.createdAt)}</span>
+                      </div>
                     </div>
 
                     {/* 参数标签 */}
@@ -154,7 +273,7 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
                               className="h-14 w-14 cursor-zoom-in overflow-hidden rounded border border-gray-200"
                               onClick={() => setLightboxImage({ url: thumb, title: `产品原图 ${i + 1}` })}
                             >
-                              <img src={thumb} alt={`原图 ${i + 1}`} className="h-full w-full object-cover" />
+                              <img src={getProxyImageUrl(thumb)} alt={`原图 ${i + 1}`} className="h-full w-full object-cover" />
                             </div>
                           ))}
                         </div>
@@ -176,6 +295,49 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
                         <p className="text-[11px] text-gray-600">{record.editRegionInstruction}</p>
                       </div>
                     )}
+
+                    {/* 3D模型生成结果 */}
+                    {generatingRecordId === record.id && (isGenerating3D || model3DUrl || error3D) && (
+                      <div className="mt-2 rounded-lg border border-purple-200 bg-purple-50 p-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-semibold text-purple-900">3D 模型生成</span>
+                          <button
+                            onClick={() => { setModel3DUrl(null); setError3D(null); setIsGenerating3D(false); }}
+                            className="text-[10px] text-purple-500 hover:text-purple-700"
+                          >
+                            关闭
+                          </button>
+                        </div>
+                        {isGenerating3D && (
+                          <div className="mt-1">
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-purple-200">
+                              <div
+                                className="h-full bg-purple-600 transition-all duration-500"
+                                style={{ width: `${progress3D}%` }}
+                              />
+                            </div>
+                            <p className="mt-1 text-[10px] text-purple-600">正在生成3D模型，约需1-3分钟...</p>
+                          </div>
+                        )}
+                        {error3D && (
+                          <p className="mt-1 text-[10px] text-red-600">{error3D}</p>
+                        )}
+                        {model3DUrl && (
+                          <div className="mt-1 space-y-1">
+                            <p className="text-[10px] text-purple-700">3D模型生成成功！</p>
+                            <a
+                              href={model3DUrl}
+                              download="3d-model.glb"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-block rounded bg-purple-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-purple-700"
+                            >
+                              下载 .glb 模型
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* 生成结果 */}
@@ -187,7 +349,7 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
                             className="aspect-square w-full cursor-zoom-in overflow-hidden"
                             onClick={() => setLightboxImage({ url: card.imageUrl!, title: card.title })}
                           >
-                            <img src={card.imageUrl} alt={card.title} className="h-full w-full object-cover" loading="lazy" />
+                            <img src={getProxyImageUrl(card.imageUrl)} alt={card.title} className="h-full w-full object-cover" loading="lazy" />
                           </div>
                         ) : (
                           <div className="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400">
@@ -275,6 +437,10 @@ export default function HistoryPanel({ onReuseConfig }: { onReuseConfig: (config
           imageUrl={lightboxImage.url}
           title={lightboxImage.title}
           onClose={() => setLightboxImage(null)}
+          onUseAsOriginal={onUseAsOriginal ? (url) => {
+            onUseAsOriginal(url);
+            setLightboxImage(null);
+          } : undefined}
         />
       )}
     </div>

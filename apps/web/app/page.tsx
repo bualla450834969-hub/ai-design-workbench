@@ -10,6 +10,7 @@ import SettingsPanel from "@/components/SettingsPanel";
 import LoginPage from "@/components/LoginPage";
 import SplashScreen from "@/components/SplashScreen";
 import { ToastProvider } from "@/components/Toast";
+import UpdateNotification from "@/components/UpdateNotification";
 import { getDeviceId, getLicenseCode } from "@/utils";
 import type { ResultCard, GenerationState, PendingGenerateConfig, BatchResultGroup } from "@/types";
 
@@ -25,6 +26,7 @@ export default function HomePage() {
     cards: [],
   });
   const [pendingConfig, setPendingConfig] = useState<PendingGenerateConfig>(null);
+  const [pendingProductImage, setPendingProductImage] = useState<string | null>(null);
   const [batchResults, setBatchResults] = useState<BatchResultGroup[]>([]);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -68,6 +70,11 @@ export default function HomePage() {
     setGeneration((prev) => ({ ...prev, isGenerating: false }));
     setBatchResults(groups);
     setActiveTab("results");
+  }, []);
+
+  const handleUseAsOriginal = useCallback((imageUrl: string) => {
+    setPendingProductImage(imageUrl);
+    setActiveTab("generate");
   }, []);
 
   // 第一步：显示启动页
@@ -119,48 +126,47 @@ export default function HomePage() {
         </header>
 
         <div className="mx-auto max-w-3xl px-4 py-5 lg:max-w-5xl lg:py-8 lg:pr-8">
-          {activeTab === "generate" && (
-            <div className="animate-fade-in-up">
-              <GeneratePanel
-                generation={generation}
-                setGeneration={setGeneration}
-                onComplete={handleGenerationComplete}
-                onBatchComplete={handleBatchComplete}
-                pendingConfig={pendingConfig}
-                onConfigApplied={() => setPendingConfig(null)}
-              />
-            </div>
-          )}
-          {activeTab === "results" && (
-            <div className="animate-fade-in-up">
-              <ResultsPanel
-                cards={generation.cards}
-                batchGroups={batchResults}
-                isGenerating={generation.isGenerating}
-                context={generation.context}
-              />
-            </div>
-          )}
-          {activeTab === "history" && (
-            <div className="animate-fade-in-up">
-              <HistoryPanel
-                onReuseConfig={(config) => {
-                  setPendingConfig(config);
-                  setActiveTab("generate");
-                }}
-              />
-            </div>
-          )}
-          {activeTab === "favorites" && (
-            <div className="animate-fade-in-up">
-              <FavoritesPanel />
-            </div>
-          )}
-          {activeTab === "settings" && (
-            <div className="animate-fade-in-up">
-              <SettingsPanel />
-            </div>
-          )}
+          {/* 始终挂载所有面板，用 CSS 控制显示/隐藏，避免切换页面时状态丢失 */}
+          <div className={activeTab === "generate" ? "animate-fade-in-up" : "hidden"}>
+            <GeneratePanel
+              generation={generation}
+              setGeneration={setGeneration}
+              onComplete={handleGenerationComplete}
+              onBatchComplete={handleBatchComplete}
+              pendingConfig={pendingConfig}
+              onConfigApplied={() => setPendingConfig(null)}
+              pendingProductImage={pendingProductImage}
+              onProductImageApplied={() => setPendingProductImage(null)}
+            />
+          </div>
+          <div className={activeTab === "results" ? "animate-fade-in-up" : "hidden"}>
+            <ResultsPanel
+              cards={generation.cards}
+              batchGroups={batchResults}
+              isGenerating={generation.isGenerating}
+              context={generation.context}
+              onUseAsOriginal={handleUseAsOriginal}
+            />
+          </div>
+          <div className={activeTab === "history" ? "animate-fade-in-up" : "hidden"}>
+            <HistoryPanel
+              visible={activeTab === "history"}
+              onReuseConfig={(config) => {
+                setPendingConfig(config);
+                setActiveTab("generate");
+              }}
+              onUseAsOriginal={handleUseAsOriginal}
+            />
+          </div>
+          <div className={activeTab === "favorites" ? "animate-fade-in-up" : "hidden"}>
+            <FavoritesPanel 
+              visible={activeTab === "favorites"} 
+              onUseAsOriginal={handleUseAsOriginal}
+            />
+          </div>
+          <div className={activeTab === "settings" ? "animate-fade-in-up" : "hidden"}>
+            <SettingsPanel />
+          </div>
         </div>
       </main>
     </div>

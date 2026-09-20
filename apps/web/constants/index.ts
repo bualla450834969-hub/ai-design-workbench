@@ -63,9 +63,22 @@ export const COMMERCE_LOCALES = [
 ];
 
 export const COMMERCE_RESOLUTIONS = [
-  { value: "standard", label: "标准" },
-  { value: "2K", label: "2K" },
-  { value: "4K", label: "4K" },
+  { value: "standard", label: "标准 (1K)" },
+  { value: "2K", label: "2K 高清" },
+  { value: "4K", label: "4K 超高清" },
+];
+
+// 生成数量选项
+export const GENERATE_COUNT_OPTIONS = [1, 2, 3, 4, 6, 7, 10, 20, 50, 100];
+
+export const ASPECT_RATIOS = [
+  { value: "1:1", label: "1:1 正方形", desc: "电商主图、头像" },
+  { value: "3:4", label: "3:4 竖版", desc: "小红书、详情页" },
+  { value: "4:3", label: "4:3 横版", desc: "产品展示、PPT" },
+  { value: "3:2", label: "3:2 横版", desc: "摄影、海报" },
+  { value: "2:3", label: "2:3 竖版", desc: "海报、宣传单" },
+  { value: "16:9", label: "16:9 宽屏", desc: "场景图、Banner" },
+  { value: "9:16", label: "9:16 竖屏", desc: "手机端、短视频" },
 ];
 
 export const DETAIL_STYLES = [
@@ -80,6 +93,17 @@ export const COPY_DENSITIES = [
   { value: "light", label: "少文案" },
   { value: "balanced", label: "均衡" },
   { value: "detailed", label: "信息丰富" },
+];
+
+// 电商详情页视觉风格
+export const DETAIL_VISUAL_STYLES = [
+  { value: "auto", label: "自动匹配", desc: "根据产品品类自动选择最合适的视觉风格", prompt: "" },
+  { value: "minimal", label: "简约风", desc: "大量留白、黑白灰、极简排版", prompt: "Use a minimalist visual style: abundant white space, monochrome black/white/gray palette, clean typography hierarchy, subtle shadows, no decorative elements. Let the product be the sole visual focus." },
+  { value: "tech", label: "科技风", desc: "深色背景、蓝光、未来感、科技线条", prompt: "Use a tech/futuristic visual style: dark navy/black background, blue/cyan accent lighting, subtle grid lines or tech patterns, glowing effects, sleek and modern atmosphere, holographic hints." },
+  { value: "premium", label: "高端风", desc: "深色、金/银色、高级材质、奢华感", prompt: "Use a premium/luxury visual style: deep charcoal or black background, gold/silver accent colors, rich material textures (marble, metal, velvet), dramatic lighting, elegant and sophisticated atmosphere." },
+  { value: "chinese", label: "国潮风", desc: "中国传统元素、红/金色、东方美学", prompt: "Use a Chinese national trend (guochao) visual style: traditional Chinese elements and patterns, red/gold color palette, oriental aesthetics, ink wash hints, cultural motifs integrated modernly." },
+  { value: "fresh", label: "清新风", desc: "明亮浅色系、自然元素、清新感", prompt: "Use a fresh/clean visual style: bright and airy, light pastel color palette, natural elements (plants, wood, sunlight), soft shadows, clean and refreshing atmosphere." },
+  { value: "energetic", label: "活力风", desc: "鲜艳色彩、动感构图、年轻化", prompt: "Use an energetic/youthful visual style: vibrant and bold colors, dynamic compositions, diagonal lines, playful gradients, energetic and fun atmosphere, modern pop culture feel." },
 ];
 
 export const LOCAL_EDIT_INTENT_LABELS: Record<LocalEditIntent, string> = {

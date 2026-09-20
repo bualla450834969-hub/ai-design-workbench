@@ -105,10 +105,13 @@ export type GenerateRequest = {
   editRegionInstruction?: string;
   editRegionIntent?: LocalEditIntent;
   applicationMode?: "appearance-redesign" | "product-kit" | "detail-page";
+  commerceKitPreset?: "auto" | "six-view" | "scene" | "white-bg" | "detail" | "lifestyle";
   commercePlatform?: CommercePlatform;
   commerceLocale?: CommerceLocale;
   commerceResolution?: "standard" | "2K" | "4K";
+  aspectRatio?: "1:1" | "3:2" | "2:3" | "4:3" | "3:4" | "16:9" | "9:16";
   commerceDetailStyle?: CommerceDetailStyle;
+  commerceDetailVisualStyle?: "auto" | "minimal" | "tech" | "premium" | "chinese" | "fresh" | "energetic";
   commerceCopyDensity?: CommerceCopyDensity;
   commerceDetailModules?: CommerceDetailModule[];
 };

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { getDeviceId, getLicenseCode, saveLicenseCode } from "@/utils";
@@ -149,8 +149,8 @@ export default function LoginPage({ onAuthorized }: LoginPageProps) {
               </g>
             </svg>
           </div>
-          <h1 className="text-2xl font-light text-white tracking-widest mb-2">AI 设计工作台</h1>
-          <p className="text-xs text-white/40 tracking-[0.3em]">PRODUCT DESIGN · INTELLIGENT GENERATION</p>
+          <h1 className="text-2xl font-light text-white tracking-widest mb-2">璃火矩创</h1>
+          <p className="text-xs text-white/40 tracking-[0.3em]">PYRALUMA · INDUSTRIAL DESIGN AI</p>
         </div>
 
         {/* 登录卡片 - 极简毛玻璃增强版 */}

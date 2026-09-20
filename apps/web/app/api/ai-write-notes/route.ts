@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     // 确定 API endpoint
     let endpoint = "";
     if (provider === "geeknow") {
-      endpoint = "https://www.geeknow.top/v1/chat/completions";
+      endpoint = "https://api.geeknow.ai/v1/chat/completions";
     } else if (provider === "apiyi") {
       endpoint = "https://api.apiyi.com/v1/chat/completions";
     } else if (provider === "aihubmix") {
@@ -61,22 +61,40 @@ export async function POST(req: NextRequest) {
     } else if (provider === "custom" && baseUrl) {
       endpoint = baseUrl.replace(/\/$/, "") + "/chat/completions";
     } else {
-      endpoint = "https://www.geeknow.top/v1/chat/completions";
+      endpoint = "https://api.geeknow.ai/v1/chat/completions";
     }
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: brainModel || "gemini-3.1-pro-preview",
-        messages,
-        temperature: 0.8,
-        max_tokens: 1500,
-      }),
-    });
+    // 添加 120 秒超时
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: brainModel || "gemini-3.1-pro-preview",
+          messages,
+          temperature: 0.8,
+          max_tokens: 2000,
+        }),
+        signal: controller.signal,
+      });
+
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === "AbortError") {
+        return NextResponse.json({ error: "AI 响应超时（超过120秒），请重试或检查网络" }, { status: 504 });
+      }
+      console.error("[AI Write Notes] Fetch error:", fetchError);
+      return NextResponse.json({ error: `网络请求失败: ${fetchError.message}` }, { status: 500 });
+    }
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const err = await response.text();

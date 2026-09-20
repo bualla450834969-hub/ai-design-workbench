@@ -1,13 +1,21 @@
-"use client";
+﻿"use client";
+
+// 将跨域图片URL转为本地代理URL
+function getProxyImageUrl(url: string): string {
+  if (!url) return url;
+  if (url.startsWith("/api/") || url.startsWith("data:")) return url;
+  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+}
 
 import { useState, useEffect } from "react";
 import type { ResultCard } from "@/types";
 import { loadFavorites, saveFavorites } from "@/utils";
+import { downloadImage } from "@/utils/file-save";
 import CardDetailModal from "@/components/CardDetailModal";
 import ImageLightbox from "@/components/ImageLightbox";
 import { useToast } from "@/components/Toast";
 
-export default function FavoritesPanel() {
+export default function FavoritesPanel({ visible, onUseAsOriginal }: { visible?: boolean; onUseAsOriginal?: (imageUrl: string) => void }) {
   const [favorites, setFavorites] = useState<ResultCard[]>([]);
   const [selectedCard, setSelectedCard] = useState<ResultCard | null>(null);
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
@@ -16,6 +24,13 @@ export default function FavoritesPanel() {
   useEffect(() => {
     setFavorites(loadFavorites());
   }, []);
+
+  // 当面板变为可见时，重新加载收藏数据
+  useEffect(() => {
+    if (visible) {
+      setFavorites(loadFavorites());
+    }
+  }, [visible]);
 
   const handleRemove = (cardId: string) => {
     const next = favorites.filter((c) => c.id !== cardId);
@@ -32,27 +47,26 @@ export default function FavoritesPanel() {
     }
   };
 
-  const handleDownload = (card: ResultCard) => {
+  const handleDownload = async (card: ResultCard) => {
     if (card.imageUrl) {
-      const a = document.createElement("a");
-      a.href = card.imageUrl;
-      a.download = `${card.title || "设计方案"}.png`;
-      a.click();
+      const success = await downloadImage(card.imageUrl, `${card.title || "设计方案"}.png`);
+      if (success) {
+        showToast("图片已开始下载", "success");
+      } else {
+        showToast("下载失败，请重试", "error");
+      }
     }
   };
 
-  const handleDownloadAll = () => {
-    favorites.forEach((card, idx) => {
-      if (card.imageUrl) {
-        setTimeout(() => {
-          const a = document.createElement("a");
-          a.href = card.imageUrl!;
-          a.download = `${card.title || "方案"}-${idx + 1}.png`;
-          a.click();
-        }, idx * 300);
-      }
-    });
+  const handleDownloadAll = async () => {
     showToast(`开始下载 ${favorites.length} 张图片`, "success");
+    for (let idx = 0; idx < favorites.length; idx++) {
+      const card = favorites[idx];
+      if (card.imageUrl) {
+        await downloadImage(card.imageUrl, `${card.title || "方案"}-${idx + 1}.png`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
   };
 
   if (favorites.length === 0) {
@@ -96,7 +110,7 @@ export default function FavoritesPanel() {
                 className="relative aspect-square w-full cursor-zoom-in overflow-hidden bg-gray-100"
                 onClick={() => setLightboxImage({ url: card.imageUrl!, title: card.title })}
               >
-                <img src={card.imageUrl} alt={card.title} className="h-full w-full object-cover" loading="lazy" />
+                <img src={getProxyImageUrl(card.imageUrl)} alt={card.title} className="h-full w-full object-cover" loading="lazy" />
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -154,6 +168,10 @@ export default function FavoritesPanel() {
           imageUrl={lightboxImage.url}
           title={lightboxImage.title}
           onClose={() => setLightboxImage(null)}
+          onUseAsOriginal={onUseAsOriginal ? (url) => {
+            onUseAsOriginal(url);
+            setLightboxImage(null);
+          } : undefined}
         />
       )}
     </div>

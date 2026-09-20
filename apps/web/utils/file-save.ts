@@ -119,14 +119,63 @@ function dataURLToBlob(dataUrl: string): Blob {
   return new Blob([u8arr], { type: mime });
 }
 
-// 下载图片（兼容不支持 File System Access API 的浏览器）
-export function downloadImage(imageUrl: string, filename: string) {
-  const link = document.createElement("a");
-  link.href = imageUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+// 下载图片（使用 Blob 方式，确保直接下载而不是在浏览器中打开）
+export async function downloadImage(imageUrl: string, filename: string): Promise<boolean> {
+  try {
+    let blob: Blob;
+    
+    if (imageUrl.startsWith("data:")) {
+      // base64 data URL 转换为 Blob
+      blob = dataURLToBlob(imageUrl);
+    } else {
+      // 普通 URL，使用图片代理避免跨域问题
+      const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        console.error("下载图片失败:", response.status);
+        // 降级：直接尝试 fetch 原 URL
+        try {
+          const directResponse = await fetch(imageUrl);
+          if (!directResponse.ok) return false;
+          blob = await directResponse.blob();
+        } catch {
+          return false;
+        }
+      } else {
+        blob = await response.blob();
+      }
+    }
+
+    // 创建 Object URL
+    const objectUrl = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // 释放 Object URL
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    
+    return true;
+  } catch (e) {
+    console.error("下载图片失败:", e);
+    // 降级方案：直接用链接下载
+    try {
+      const link = document.createElement("a");
+      link.href = imageUrl;
+      link.download = filename;
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
 
 // 保存单张图片到目录
@@ -149,7 +198,10 @@ export async function saveImageToDirectory(
     if (imageUrl.startsWith("data:")) {
       blob = dataURLToBlob(imageUrl);
     } else {
-      const response = await fetch(imageUrl);
+      // 使用图片代理避免跨域问题
+      const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+      const response = await fetch(proxyUrl);
+      if (!response.ok) return false;
       blob = await response.blob();
     }
 
@@ -170,21 +222,23 @@ export async function saveResultsToDirectory(
   cards: Array<{ imageUrl?: string; title?: string }>,
   productName: string,
   templateLabel?: string
-): Promise<{ saved: number; total: number }> {
+): Promise<{ saved: number; total: number; error?: string }> {
   const handle = await getSavedDirectoryHandle();
-  if (!handle) return { saved: 0, total: cards.length };
-
-  // 请求权限
-  if (!handle.requestPermission) return { saved: 0, total: cards.length };
-  const permission = await handle.requestPermission({ mode: "readwrite" });
-  if (permission !== "granted") return { saved: 0, total: cards.length };
+  if (!handle) {
+    return { saved: 0, total: cards.length, error: "未选择保存目录，请在设置页选择" };
+  }
 
   // 创建子目录（只用产品名称，相同产品自动归类到同一文件夹）
   const folderName = (productName || "未命名产品").replace(/[\\/:*?"<>|]/g, "_");
   let subDirHandle: FileSystemDirectoryHandle;
   try {
     subDirHandle = await handle.getDirectoryHandle(folderName, { create: true });
-  } catch {
+  } catch (e: any) {
+    // 如果创建子目录失败，可能是权限问题
+    if (e.name === "NotAllowedError" || e.name === "SecurityError") {
+      return { saved: 0, total: cards.length, error: "目录权限已过期，请在设置页重新选择保存目录" };
+    }
+    console.error("创建子目录失败:", e);
     subDirHandle = handle; // 如果创建失败，保存到根目录
   }
 
@@ -192,9 +246,14 @@ export async function saveResultsToDirectory(
   const batchTimestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
   let saved = 0;
+  let lastError: string | undefined;
+  
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
-    if (!card?.imageUrl) continue;
+    if (!card?.imageUrl) {
+      lastError = "图片URL为空";
+      continue;
+    }
 
     const ext = card.imageUrl.startsWith("data:image/jpeg") ? "jpg" : "png";
     const filename = `${batchTimestamp}_${String(i + 1).padStart(2, "0")}_${card.title || `方案${i + 1}`}.${ext}`.replace(/[\\/:*?"<>|]/g, "_");
@@ -204,7 +263,13 @@ export async function saveResultsToDirectory(
       if (card.imageUrl.startsWith("data:")) {
         blob = dataURLToBlob(card.imageUrl);
       } else {
-        const response = await fetch(card.imageUrl);
+        // 使用图片代理避免跨域问题
+        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(card.imageUrl)}`;
+        const response = await fetch(proxyUrl);
+        if (!response.ok) {
+          lastError = `下载图片失败: ${response.status}`;
+          continue;
+        }
         blob = await response.blob();
       }
 
@@ -213,12 +278,21 @@ export async function saveResultsToDirectory(
       await writable.write(blob);
       await writable.close();
       saved++;
-    } catch (e) {
+    } catch (e: any) {
       console.error(`保存第 ${i + 1} 张图片失败:`, e);
+      if (e.name === "NotAllowedError" || e.name === "SecurityError") {
+        lastError = "目录权限已过期，请在设置页重新选择保存目录";
+        break; // 权限问题，不需要继续尝试
+      }
+      lastError = e.message || "保存失败";
     }
   }
 
-  return { saved, total: cards.length };
+  const result: { saved: number; total: number; error?: string } = { saved, total: cards.length };
+  if (saved === 0 && lastError) {
+    result.error = lastError;
+  }
+  return result;
 }
 
 // 检查是否启用了自动保存
