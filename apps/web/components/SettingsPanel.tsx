@@ -467,9 +467,20 @@ export default function SettingsPanel() {
       <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-3 text-sm font-semibold text-white">关于</h2>
         <div className="space-y-2 text-xs text-white/50">
-          <p>核心引擎版本：v1.0.0</p>
+          <p>当前版本：<span className="font-medium text-white">v1.0.0</span></p>
           <p>基于 AI-Design-Pro 学习源码重构</p>
           <p>移动优先 · 响应式布局</p>
+        </div>
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <button
+            onClick={() => showToast("正在检查更新...", "info")}
+            className="w-full rounded-lg bg-indigo-500/80 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 transition-all"
+          >
+            检查更新
+          </button>
+          <p className="mt-2 text-xs text-white/40 text-center">
+            检查到新版本时会自动提示
+          </p>
         </div>
       </section>
     </div>
