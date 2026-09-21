@@ -15,6 +15,6 @@
     "lint": "npm run lint --workspace @workbench/web"
   },
   "engines": {
-    "node": "22.x"
+    "node": "20.x"
   }
 }
