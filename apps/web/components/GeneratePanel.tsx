@@ -100,9 +100,8 @@ export default function GeneratePanel({
       // 下载图片并转成 base64
       (async () => {
         try {
-          // 经过我们自己的 image-proxy 代理，解决跨域问题
-          const proxyUrl = "/api/image-proxy?url=" + encodeURIComponent(pendingProductImage);
-          const response = await fetch(proxyUrl);
+          // 如果是代理URL，直接fetch
+          const response = await fetch(pendingProductImage);
           const blob = await response.blob();
           const reader = new FileReader();
           reader.onloadend = () => {
@@ -350,7 +349,7 @@ export default function GeneratePanel({
         const thumbnails = await Promise.all(
           productImages.slice(0, 3).map((img) => compressImageToThumbnail(img.dataUrl))
         );
-        await addHistoryRecord({
+        addHistoryRecord({
           productName: productNameSnapshot || "未命名产品",
           templateId: group.templateId,
           templateLabel,
@@ -574,7 +573,7 @@ export default function GeneratePanel({
                 commerceLocale: applicationMode !== "appearance-redesign" ? commerceLocale : undefined,
                 kitPreset: applicationMode === "product-kit" ? kitPreset : undefined,
               };
-              await addHistoryRecord({
+              addHistoryRecord({
                 templateId,
                 count,
                 cards: [...resultCards],
@@ -598,35 +597,39 @@ export default function GeneratePanel({
                   });
               }
 
-              // 局部改款像素恢复暂时关闭，因为跨域问题导致 Canvas 加载远程图片失败
-              // 后面改成先把 API 图片下载到本地再做合成
+              // 局部改款像素恢复：蒙版外用原图覆盖
               let finalCards = resultCards;
-              
-              // 现在保存历史记录（用像素恢复后的 finalCards）
-              await addHistoryRecord({
-                templateId,
-                count,
-                cards: [...finalCards],
-                referenceImageRoles: referenceImages.map((r) => r.role),
-                ...genContext,
-              });
-
-              // 自动保存到本地目录
-              if (isAutoSaveEnabled()) {
-                saveResultsToDirectory(finalCards, productNameSnapshot || "未命名产品", templateLabel)
-                  .then(({ saved, total, error }) => {
-                    if (saved > 0) {
-                      showToast(`已保存 ${saved}/${total} 张图片到本地目录`, "success");
-                    } else {
-                      showToast(`自动保存失败：${error || "未知错误"}。请在设置页重新选择保存目录`, "error");
-                    }
-                  })
-                  .catch((err) => {
-                    console.error("自动保存失败:", err);
-                    showToast(`自动保存失败：${err.message || "未知错误"}`, "error");
-                  });
+              if (localEditEnabled && editRegionMask && productImages.length > 0) {
+                try {
+                  showToast("正在做局部像素恢复...", "info");
+                  const originalImage = productImages[0].dataUrl;
+                  const maskImage = editRegionMask;
+                  
+                  // 对每张结果做像素恢复
+                  finalCards = await Promise.all(
+                    resultCards.map(async (card) => {
+                      if (!card.imageUrl) return card;
+                      try {
+                        const composite = await compositeLocalEdit(
+                          originalImage,
+                          card.imageUrl,
+                          maskImage,
+                          4
+                        );
+                        return { ...card, imageUrl: composite };
+                      } catch (e) {
+                        console.error("像素恢复失败:", e);
+                        return card; // 失败就用原来的
+                      }
+                    })
+                  );
+                  showToast("局部像素恢复完成", "success");
+                } catch (e) {
+                  console.error("局部像素恢复处理失败:", e);
+                  showToast("局部像素恢复失败，使用原图结果", "info");
+                }
               }
-
+              
               setGeneration((prev) => ({
                 ...prev,
                 isGenerating: false,
