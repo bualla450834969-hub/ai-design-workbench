@@ -13,25 +13,16 @@ export default function LoginPage({ onAuthorized }: LoginPageProps) {
   const [error, setError] = useState("");
   const [isAutoChecking, setIsAutoChecking] = useState(false);
 
-  // 页面加载时，如果有保存的授权码，自动验证
+  // 页面加载时，如果有保存的授权码，自动验证（前端硬编码）
   useEffect(() => {
     const savedCode = getLicenseCode();
     if (savedCode) {
       setIsAutoChecking(true);
-      const deviceId = getDeviceId();
-      fetch("/api/license/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ licenseCode: savedCode, deviceId }),
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.valid) {
-            onAuthorized();
-          }
-        })
-        .catch(() => {})
-        .finally(() => setIsAutoChecking(false));
+      const validCodes = ["TESTER88888888", "LIHUO88888888", "LIHUO000001"];
+      if (validCodes.includes(savedCode.toUpperCase())) {
+        onAuthorized();
+      }
+      setIsAutoChecking(false);
     }
   }, [onAuthorized]);
 
@@ -44,27 +35,19 @@ export default function LoginPage({ onAuthorized }: LoginPageProps) {
     setIsVerifying(true);
     setError("");
 
-    try {
-      const deviceId = getDeviceId();
-      const response = await fetch("/api/license/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ licenseCode: licenseCode.trim().toUpperCase(), deviceId }),
-      });
-
-      const data = await response.json();
-
-      if (data.valid) {
-        saveLicenseCode(licenseCode.trim().toUpperCase());
+    // 前端硬编码验证，不需要后端（兼容 Vercel Serverless）
+    const validCodes = ["TESTER88888888", "LIHUO88888888", "LIHUO000001"];
+    const code = licenseCode.trim().toUpperCase();
+    
+    setTimeout(() => {
+      if (validCodes.includes(code)) {
+        saveLicenseCode(code);
         onAuthorized();
       } else {
-        setError(data.message || "授权码无效或已达设备上限");
+        setError("授权码无效，请检查后重试");
       }
-    } catch (err) {
-      setError("验证失败，请检查网络连接");
-    } finally {
       setIsVerifying(false);
-    }
+    }, 500);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
