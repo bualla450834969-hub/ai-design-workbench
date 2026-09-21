@@ -1,4 +1,4 @@
-// 授权码管理 - 数据存储层
+﻿// 授权码管理 - 数据存储层
 // 支持文件存储（本地/Electron）和 Redis（生产）
 
 import * as fs from 'fs';
