@@ -3,7 +3,7 @@
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { productImages, productName, apiKey, provider, brainModel, baseUrl } = body;
+    const { productImages, productName, userNotes, designDirection, outputCount, apiKey, provider, brainModel, baseUrl } = body;
 
     if (!apiKey) {
       return NextResponse.json({ error: "请先在设置页配置 AI 供应商 API Key" }, { status: 400 });
@@ -13,27 +13,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "请先上传产品图片" }, { status: 400 });
     }
 
-    // 构造 prompt
-    const systemPrompt = `你是一位拥有15年经验的资深工业设计师，擅长消费电子产品、家居用品、小家电的外观设计。
-请根据用户提供的产品图片和产品名称，分析产品的现状，并生成一份专业、具体、可执行的设计优化需求文档。
+    // 升级版提示词：参考原版的 prompt-enhancer，但保持简单稳定
+    const systemPrompt = `你是工业设计需求编辑与差异化路线规划助手。
+请根据产品图片、产品名称和用户输入，整理成一段清晰、可执行的中文设计需求。
 
 输出要求：
-1. 先简要分析产品现状（造型特点、优缺点）
-2. 然后给出具体的设计优化建议，包括以下维度：
-   - 造型方向：整体造型的优化方向，要具体描述（如：更圆润的边角、更简洁的线条、更有辨识度的剪影等）
-   - 配色方案：建议的主色、辅色、点缀色，以及色彩搭配理由
-   - 材质工艺：建议使用的材质和表面处理工艺（如：磨砂塑料、金属阳极氧化、IMD模内装饰等）
-   - 功能优化：从用户体验角度提出功能改进建议
-   - 用户群体：明确目标用户画像（年龄、性别、生活方式、消费能力）
-   - 使用场景：描述产品的主要使用场景和环境
-   - 差异化卖点：如何在同类产品中脱颖而出
-3. 语言要专业但易懂，避免空泛的形容词，每个建议都要具体可执行
-4. 总字数控制在300-500字
-5. 用中文输出，用清晰的分段和小标题组织内容`;
+1. 先简要观察产品：品类、核心功能、关键结构特征
+2. 明确必须保留的硬约束：决定品类的关键部件、接口、安全点
+3. 明确可以调整的区域：外壳造型、分件、材质、配色、细节
+4. 给出差异化方向：如果要生成多张方案，每张的差异点是什么
+5. 语言要自然、可编辑，不要用 JSON 格式，就是一段通顺的中文描述
+6. 总字数控制在 200-400 字
+7. 直接输出设计需求正文，不要输出"分析如下"之类的前缀
 
-    const userPrompt = `产品名称：${productName || "未命名产品"}
+【重要】
+- 所有描述必须是简体中文
+- 不要提"系统指令"、"AI"、"模型"之类的词
+- 不要输出 JSON 或 Markdown 格式，就是一段普通文字
+- 要具体，不要空泛（比如不要说"更高级的感觉"，要说"更简洁的线条、更低饱和的配色、更细腻的磨砂材质"）`;
 
-请分析这张产品图片，生成设计优化需求文档。`;
+    const userPromptParts = [
+      `产品名称：${productName || "未命名产品"}`,
+      designDirection ? `设计方向：${designDirection}` : "",
+      outputCount ? `需要生成 ${outputCount} 张方案` : "",
+      userNotes ? `用户现有输入：${userNotes}` : "",
+      "",
+      "请分析这张产品图片，整理成专业的设计需求描述。",
+    ].filter(Boolean).join("\n");
 
     // 构造 OpenAI 兼容的请求体
     const messages: any[] = [
@@ -41,7 +47,7 @@ export async function POST(req: NextRequest) {
       {
         role: "user",
         content: [
-          { type: "text", text: userPrompt },
+          { type: "text", text: userPromptParts },
           ...productImages.slice(0, 3).map((img: { dataUrl: string }) => ({
             type: "image_url",
             image_url: { url: img.dataUrl },
@@ -64,9 +70,9 @@ export async function POST(req: NextRequest) {
       endpoint = "https://api.geeknow.ai/v1/chat/completions";
     }
 
-    // 添加 120 秒超时
+    // 添加 90 秒超时（缩短一点，避免等太久）
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
 
     let response: Response;
     try {
@@ -79,8 +85,8 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model: brainModel || "gemini-3.1-pro-preview",
           messages,
-          temperature: 0.8,
-          max_tokens: 2000,
+          temperature: 0.7,
+          max_tokens: 1200,
         }),
         signal: controller.signal,
       });
@@ -88,7 +94,7 @@ export async function POST(req: NextRequest) {
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
       if (fetchError.name === "AbortError") {
-        return NextResponse.json({ error: "AI 响应超时（超过120秒），请重试或检查网络" }, { status: 504 });
+        return NextResponse.json({ error: "AI 响应超时（超过90秒），请重试或检查网络" }, { status: 504 });
       }
       console.error("[AI Write Notes] Fetch error:", fetchError);
       return NextResponse.json({ error: `网络请求失败: ${fetchError.message}` }, { status: 500 });
@@ -102,7 +108,7 @@ export async function POST(req: NextRequest) {
       
       let errorMsg = `AI 调用失败: ${response.status}`;
       if (response.status === 429) {
-        errorMsg = "API 请求过于频繁，请稍后再试（限流 429）";
+        errorMsg = "API 请求过于频繁，请稍后再试";
       } else if (response.status === 401 || response.status === 403) {
         errorMsg = "API Key 无效或已过期，请检查设置";
       } else if (response.status === 404) {
@@ -112,7 +118,7 @@ export async function POST(req: NextRequest) {
           const errJson = JSON.parse(err);
           errorMsg = errJson.error?.message || errJson.message || `AI 调用失败: ${response.status}`;
         } catch {
-          errorMsg = `AI 调用失败: ${response.status} ${err.slice(0, 100)}`;
+          errorMsg = `AI 调用失败: ${response.status}`;
         }
       }
       

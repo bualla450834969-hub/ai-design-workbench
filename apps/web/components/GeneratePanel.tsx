@@ -28,6 +28,7 @@ import {
 import { fileToDataUrl, getProviderConfig, getDeviceId, addHistoryRecord, compressImageToThumbnail, loadCostConfig, estimateCost, getLicenseCode } from "@/utils";
 import { isAutoSaveEnabled, saveResultsToDirectory } from "@/utils/file-save";
 import LocalEditMask from "@/components/LocalEditMask";
+import { compositeLocalEdit } from "@/utils/local-edit-composite";
 import { useToast } from "@/components/Toast";
 
 export default function GeneratePanel({
@@ -596,17 +597,50 @@ export default function GeneratePanel({
                   });
               }
 
+              // 局部改款像素恢复：蒙版外用原图覆盖
+              let finalCards = resultCards;
+              if (localEditEnabled && editRegionMask && productImages.length > 0) {
+                try {
+                  showToast("正在做局部像素恢复...", "info");
+                  const originalImage = productImages[0].dataUrl;
+                  const maskImage = editRegionMask;
+                  
+                  // 对每张结果做像素恢复
+                  finalCards = await Promise.all(
+                    resultCards.map(async (card) => {
+                      if (!card.imageUrl) return card;
+                      try {
+                        const composite = await compositeLocalEdit(
+                          originalImage,
+                          card.imageUrl,
+                          maskImage,
+                          4
+                        );
+                        return { ...card, imageUrl: composite };
+                      } catch (e) {
+                        console.error("像素恢复失败:", e);
+                        return card; // 失败就用原来的
+                      }
+                    })
+                  );
+                  showToast("局部像素恢复完成", "success");
+                } catch (e) {
+                  console.error("局部像素恢复处理失败:", e);
+                  showToast("局部像素恢复失败，使用原图结果", "info");
+                }
+              }
+              
               setGeneration((prev) => ({
                 ...prev,
                 isGenerating: false,
                 phase: "done",
                 message: "生成完成",
                 percent: 100,
-                completed: resultCards.length,
-                cards: [...resultCards],
+                completed: finalCards.length,
+                cards: [...finalCards],
                 context: genContext,
               }));
-              onComplete(resultCards);
+              onComplete(finalCards);
               return;
             } else if (event.type === "error") {
               throw new Error(event.message || event.error || "生成失败");
@@ -770,10 +804,15 @@ export default function GeneratePanel({
       </section>
 
       {/* 局部改款 - 仅外观重构模式 */}
-      {productImages.length > 0 && applicationMode === "appearance-redesign" && (
+      {applicationMode === "appearance-redesign" && (
         <section className="glass-card rounded-2xl p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">局部改款（可选）</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-white">局部改款（可选）</h2>
+              {productImages.length === 0 && (
+                <p className="mt-0.5 text-[10px] text-white/40">请先上传产品图片后再使用</p>
+              )}
+            </div>
             <label className="flex items-center gap-2 cursor-pointer">
               <span className="text-xs text-white/50">{localEditEnabled ? "已开启" : "关闭"}</span>
               <button
@@ -784,10 +823,11 @@ export default function GeneratePanel({
                     setEditRegionGuide(null);
                   }
                 }}
-                className={`relative h-5 w-9 rounded-full transition-colors ${localEditEnabled ? "bg-indigo-500/80" : "bg-white/20"}`}
+                disabled={productImages.length === 0}
+                className={`relative h-5 w-9 rounded-full transition-colors ${localEditEnabled ? "bg-indigo-500/80" : "bg-white/20"} disabled:opacity-30 disabled:cursor-not-allowed`}
               >
                 <span
-                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${localEditEnabled ? "translate-x-4" : "translate-x-0.5"}`}
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${localEditEnabled ? "left-[calc(100%-18px)]" : "left-[2px]"}`}
                 />
               </button>
             </label>
@@ -926,7 +966,7 @@ export default function GeneratePanel({
                   AI 分析中...
                 </>
               ) : (
-                <>✦ AI 智能编写</>
+                <>✦ AI 整理需求</>
               )}
             </button>
           </div>

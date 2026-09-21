@@ -1,46 +1,21 @@
 // 授权码管理模块
-// 支持本地内存存储（开发）和 Upstash Redis（生产）
+// 支持文件存储（本地/Electron）和 Upstash Redis（生产）
 
-const MAX_DEVICES_PER_LICENSE = 3;
+import { getAllLicenses, isLicenseValid, isLicenseUnlimited, MAX_DEVICES_PER_LICENSE } from './license-store';
 
 // 内存存储（开发用）
 const memoryStore = new Map<string, Set<string>>(); // licenseCode -> Set<deviceId>
 
-// 默认授权码（内置，打包后也能用）
-const DEFAULT_LICENSE_CODES = ["LIHUO88888888"];
-const DEFAULT_UNLIMITED_LICENSE_CODES = ["TESTER88888888"];
-
-// 获取普通授权码列表（从环境变量，没有则用默认）
-function getValidLicenseCodes(): string[] {
-  const codes = process.env.LICENSE_CODES || process.env.APP_ACCESS_CODE || "";
-  const envCodes = codes
-    .split(",")
-    .map((c) => c.trim().toUpperCase())
-    .filter(Boolean);
-  // 合并环境变量和默认值
-  return [...new Set([...envCodes, ...DEFAULT_LICENSE_CODES])];
-}
-
-// 获取无限设备授权码列表（测试员授权码，从环境变量，没有则用默认）
-function getUnlimitedLicenseCodes(): string[] {
-  const codes = process.env.UNLIMITED_LICENSE_CODES || process.env.TESTER_LICENSE_CODES || "";
-  const envCodes = codes
-    .split(",")
-    .map((c) => c.trim().toUpperCase())
-    .filter(Boolean);
-  // 合并环境变量和默认值
-  return [...new Set([...envCodes, ...DEFAULT_UNLIMITED_LICENSE_CODES])];
-}
-
-// 获取所有有效授权码（普通 + 无限设备）
+// 获取所有有效授权码（从存储层读取）
 function getAllValidLicenseCodes(): string[] {
-  return [...getValidLicenseCodes(), ...getUnlimitedLicenseCodes()];
+  const licenses = getAllLicenses();
+  return licenses.filter(l => !l.disabled).map(l => l.code);
 }
 
 // 检查授权码是否是无限设备的
 function isUnlimitedLicense(licenseCode: string): boolean {
   const code = licenseCode.trim().toUpperCase();
-  return getUnlimitedLicenseCodes().includes(code);
+  return isLicenseUnlimited(code);
 }
 
 // 检查是否配置了 Redis
