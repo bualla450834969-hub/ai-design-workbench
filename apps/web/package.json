@@ -1,7 +1,10 @@
-{
+﻿{
   "name": "ai-design-workbench",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "main": "electron/main.js",
   "repository": {
     "type": "git",
