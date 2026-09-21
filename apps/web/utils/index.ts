@@ -1,6 +1,41 @@
-import type { ResultCard, HistoryRecord } from "@/types";
+﻿import type { ResultCard, HistoryRecord } from "@/types";
 import { HISTORY_KEY, FAVORITES_KEY, MAX_HISTORY, MAX_FAVORITES } from "@/constants";
 
+
+// 压缩图片，减少 localStorage 占用
+export async function compressImage(dataUrl: string, maxWidth = 1024, quality = 0.8): Promise<string> {
+  if (typeof window === "undefined") return dataUrl;
+  try {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        
+        // 按比例缩小
+        if (width > maxWidth) {
+          height = height * (maxWidth / width);
+          width = maxWidth;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  } catch {
+    return dataUrl;
+  }
+}
 // ========== 历史记录 ==========
 export function loadHistory(): HistoryRecord[] {
   if (typeof window === "undefined") return [];
@@ -28,9 +63,23 @@ export function saveHistory(records: HistoryRecord[]) {
   }
 }
 
-export function addHistoryRecord(record: Omit<HistoryRecord, "id" | "createdAt">): HistoryRecord {
+export async function addHistoryRecord(record: Omit<HistoryRecord, "id" | "createdAt">): Promise<HistoryRecord> {
+  // 先压缩所有结果图，减少 localStorage 占用
+  const compressedCards = await Promise.all(
+    record.cards.map(async (card) => {
+      if (card.imageUrl && card.imageUrl.startsWith("data:image")) {
+        return {
+          ...card,
+          imageUrl: await compressImage(card.imageUrl),
+        };
+      }
+      return card;
+    })
+  );
+  
   const fullRecord: HistoryRecord = {
     ...record,
+    cards: compressedCards,
     id: "hist-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
     createdAt: Date.now(),
   };
