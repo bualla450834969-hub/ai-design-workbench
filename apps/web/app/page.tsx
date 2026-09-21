@@ -32,29 +32,23 @@ export default function HomePage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
 
-  // 应用启动时检查授权状态
+  // 应用启动时检查授权状态（前端硬编码，兼容 Vercel）
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuth = () => {
       const savedLicense = getLicenseCode();
       if (!savedLicense) {
         setIsCheckingAuth(false);
         return;
       }
 
-      try {
-        const deviceId = getDeviceId();
-        const response = await fetch("/api/license/status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ licenseCode: savedLicense, deviceId }),
-        });
-        const data = await response.json();
-        setIsAuthorized(data.valid && data.thisDeviceBound);
-      } catch {
+      // 前端硬编码验证
+      const validCodes = ["TESTER88888888", "LIHUO88888888", "LIHUO000001"];
+      if (validCodes.includes(savedLicense.toUpperCase())) {
+        setIsAuthorized(true);
+      } else {
         setIsAuthorized(false);
-      } finally {
-        setIsCheckingAuth(false);
       }
+      setIsCheckingAuth(false);
     };
 
     checkAuth();
