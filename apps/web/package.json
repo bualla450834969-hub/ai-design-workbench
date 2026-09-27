@@ -44,7 +44,7 @@
   },
   "build": {
     "appId": "com.pyraluma.industrial-design-ai",
-    "productName": "鐠冪伀鐭╁垱-宸ヤ笟璁捐AI",
+    "productName": "璃火矩创-工业设计AI",
     "asar": false,
     "directories": {
       "output": "dist"
@@ -108,7 +108,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "鐠冪伀鐭╁垱-宸ヤ笟璁捐AI"
+      "shortcutName": "璃火矩创-工业设计AI"
     }
   }
 }
