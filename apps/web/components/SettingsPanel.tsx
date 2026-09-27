@@ -84,6 +84,10 @@ export default function SettingsPanel() {
   const [isVerifyingLicense, setIsVerifyingLicense] = useState(false);
   const [saveDirName, setSaveDirName] = useState<string | null>(null);
   const [autoSave, setAutoSave] = useState(() => isAutoSaveEnabled());
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window === "undefined") return "dark";
+    return (localStorage.getItem("theme") as "dark" | "light") || "dark";
+  });
   const [isSelectingDir, setIsSelectingDir] = useState(false);
   const { showToast } = useToast();
 
@@ -91,6 +95,12 @@ export default function SettingsPanel() {
   useEffect(() => {
     getSavedDirectoryName().then(setSaveDirName);
   }, []);
+
+  // 应用主题
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   const handleSelectDirectory = async () => {
     if (!isFileSystemAccessSupported()) {
@@ -461,6 +471,25 @@ export default function SettingsPanel() {
           {!isFileSystemAccessSupported() && (
             <p className="text-xs text-amber-400/80">⚠ 当前浏览器不支持目录选择，请使用 Chrome 或 Edge 浏览器</p>
           )}
+        </div>
+      </section>
+
+      {/* 主题切换 */}
+      <section className="glass-card rounded-2xl p-4">
+        <h2 className="mb-3 text-sm font-semibold text-white">外观</h2>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setTheme("dark")}
+            className={"flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all " + (theme === "dark" ? "bg-indigo-500/80 text-white" : "bg-white/5 text-white/60 hover:bg-white/10")}
+          >
+            🌙 暗夜模式
+          </button>
+          <button
+            onClick={() => setTheme("light")}
+            className={"flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all " + (theme === "light" ? "bg-indigo-500/80 text-white" : "bg-white/5 text-white/60 hover:bg-white/10")}
+          >
+            ☀️ 白日模式
+          </button>
         </div>
       </section>
 
