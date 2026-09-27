@@ -2332,6 +2332,7 @@ function buildCommerceFallbackCards({
   notes,
   applicationMode,
   commerceKitPreset,
+  sixViewLayout,
   commerceDetailVisualStyle,
   commercePlatform,
   commerceLocale,
@@ -2346,6 +2347,7 @@ function buildCommerceFallbackCards({
   notes?: string;
   applicationMode: Exclude<ApplicationMode, "appearance-redesign">;
   commerceKitPreset?: "auto" | "six-view" | "scene" | "white-bg" | "detail" | "lifestyle";
+  sixViewLayout?: "separate" | "grid";
   commerceDetailVisualStyle?: "auto" | "minimal" | "tech" | "premium" | "chinese" | "fresh" | "energetic";
   commercePlatform: CommercePlatform;
   commerceLocale: CommerceLocale;
@@ -2363,6 +2365,10 @@ function buildCommerceFallbackCards({
     ["顶部视图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 5/7: TOP PLAN VIEW. Camera at 90° elevation, directly above looking straight down. Top surface, lid, top controls, hopper visible. Pure #FFFFFF white background. No perspective. No text. No labels. Product only with soft contact shadow."],
     ["底部视图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 6/7: BOTTOM ELEVATION. Camera at -90° elevation, directly below looking straight up. Bottom surface, feet, base plate visible. Pure #FFFFFF white background. No perspective. No text. No labels. Product only with soft contact shadow."],
     ["纯正交正面主图", "SIX-VIEW ORTHOGRAPHIC SET — VIEW 7/7: PERFECT ORTHOGRAPHIC FRONT HERO SHOT. Camera at EXACTLY 0° azimuth and 0° elevation, perfectly perpendicular to the product's front face. ZERO perspective distortion, zero lens distortion, zero vanishing points. This is a precise technical orthographic elevation, like a CAD front view or engineering blueprint. Product centered, filling the frame, with even flat studio lighting. Pure #FFFFFF white background. No text, no labels, no annotations, no marketing copy. Product only with soft contact shadow beneath it. This is the hero front view for technical documentation."]
+  ] as const;
+
+  const sixViewGridRoles = [
+    ["六视图整版", "CREATE A SINGLE 3x2 SIX-VIEW ORTHOGRAPHIC GRID BOARD. Layout: Row 1 = FRONT, REAR, LEFT; Row 2 = RIGHT, TOP, BOTTOM. Six equally-sized product views arranged in a clean 3-column x 2-row grid on a pure #FFFFFF white background. Each cell shows one true orthographic elevation/plan with zero perspective, zero vanishing points, parallel projection. The product must be identical across all six views - same proportions, same parts, same CMF, same design language. Left and right views must be mirror opposites, NOT identical. Top row: front elevation (camera 0 deg), rear elevation (camera 180 deg), left side elevation (camera 270 deg). Bottom row: right side elevation (camera 90 deg), top plan view (camera 90 deg elevation), bottom view (camera -90 deg). Equal spacing between cells, no borders, no text, no labels, no dimensions, no watermarks, no logos, no annotations of any kind. Product centered in each cell with soft contact shadow. This is a technical orthographic reference board, not a marketing poster."]
   ] as const;
 
   const sceneRoles = [
@@ -2416,7 +2422,7 @@ function buildCommerceFallbackCards({
   if (applicationMode === "detail-page") {
     roles = detailPageRoles;
   } else if (commerceKitPreset === "six-view") {
-    roles = sixViewRoles;
+    roles = sixViewLayout === "grid" ? sixViewGridRoles : sixViewRoles;
   } else if (commerceKitPreset === "scene") {
     roles = sceneRoles;
   } else if (commerceKitPreset === "white-bg") {
@@ -2463,7 +2469,9 @@ function buildCommerceFallbackCards({
           `Create commerce asset ${index + 1}/${count} for ${productName || FALLBACK_PRODUCT_NAME}; category: ${category?.trim() || "infer only from the uploaded image"}.`,
           `Asset role: ${role}.`,
           commerceKitPreset === "six-view"
-            ? "ORTHOGRAPHIC PROJECTION REQUIRED: This is a technical orthographic elevation/plan view, NOT a perspective render. Use parallel projection with zero vanishing points, no foreshortening, no lens distortion, no perspective convergence. The product must appear as flat elevation drawing with true-to-scale proportions, like an engineering blueprint or CAD front/side/top view. Camera must be perfectly perpendicular to the product face. PURE WHITE BACKGROUND: absolutely clean #FFFFFF white background, no gradients, no shadows on background, no environment, no scene. NO TEXT WHATSOEVER: do not render any text, labels, callouts, dimension lines, annotations, watermarks, marketing copy, or characters of any language in the image. Product only, centered, with soft contact shadow beneath it. SIX DISTINCT VIEWS: Each of the 6 images must show a DIFFERENT side of the product — front, back, left, right, top, bottom. Left and right side views must be mirror opposites, NOT identical. Do not repeat the same angle for multiple images."
+            ? (sixViewLayout === "grid"
+              ? "ORTHOGRAPHIC GRID BOARD REQUIRED: Create ONE single image containing a 3-column x 2-row grid of six orthographic product views on a pure #FFFFFF white background. Use parallel projection with zero vanishing points, no perspective. No text, no labels, no dimensions, no watermarks. Equal spacing between the six cells. The product must be identical in every cell. Left and right views must be mirror opposites."
+              : "ORTHOGRAPHIC PROJECTION REQUIRED: This is a technical orthographic elevation/plan view, NOT a perspective render. Use parallel projection with zero vanishing points, no foreshortening, no lens distortion, no perspective convergence. The product must appear as flat elevation drawing with true-to-scale proportions, like an engineering blueprint or CAD front/side/top view. Camera must be perfectly perpendicular to the product face. PURE WHITE BACKGROUND: absolutely clean #FFFFFF white background, no gradients, no shadows on background, no environment, no scene. NO TEXT WHATSOEVER: do not render any text, labels, callouts, dimension lines, annotations, watermarks, marketing copy, or characters of any language in the image. Product only, centered, with soft contact shadow beneath it. SIX DISTINCT VIEWS: Each of the 6 images must show a DIFFERENT side of the product — front, back, left, right, top, bottom. Left and right side views must be mirror opposites, NOT identical. Do not repeat the same angle for multiple images.")
             : "",
           `Target platform: ${platform}. Intended copy language: ${language}.`,
           commercePlatformProfilePrompt(commercePlatform),
@@ -2480,7 +2488,9 @@ function buildCommerceFallbackCards({
           "Do not redesign, recolor, replace, simplify, beautify into another product, invent accessories, specifications, certifications, logos or marketing claims.",
           applicationMode === "detail-page"
             ? "Render a platform-native detail-page visual module with deliberate image-to-copy hierarchy and a clean copy-safe area. Do not render customer-facing text, labels or pseudo-text inside the image; the application will add editable copy after generation."
-            : "Return one finished, commercially usable image, not a collage, contact sheet, wireframe, UI mockup or explanation. Leave clean copy space when appropriate."
+            : (commerceKitPreset === "six-view" && sixViewLayout === "grid"
+              ? "Return ONE finished image that IS the 3x2 orthographic grid board itself, with six product views arranged in a clean grid. This is intentionally a multi-view reference board, not a single-scene photo."
+              : "Return one finished, commercially usable image, not a collage, contact sheet, wireframe, UI mockup or explanation. Leave clean copy space when appropriate.")
         ].join(" "),
         1800
       ),
@@ -2589,7 +2599,8 @@ function buildCommerceFinalImagePrompt({
   variantIndex,
   totalCount,
   promptMaxChars,
-  commerceKitPreset
+  commerceKitPreset,
+  sixViewLayout
 }: {
   plannedPrompt: string;
   productName: string;
@@ -2608,6 +2619,7 @@ function buildCommerceFinalImagePrompt({
   totalCount: number;
   promptMaxChars: number;
   commerceKitPreset?: string;
+  sixViewLayout?: string;
 }) {
   return compactText(
     [
@@ -2618,7 +2630,9 @@ function buildCommerceFinalImagePrompt({
         : `INPUT ROLE MAP: Images 1-${productImageCount} are immutable PRODUCT IDENTITY sources. No style/layout reference was supplied.`,
       "COMMERCE PRODUCT LAYER LOCK — HIGHEST VISUAL PRIORITY: the uploaded product images are immutable identity plates. Reuse the exact sellable product identity; do not reinterpret or redraw its geometry. Preserve broad category, fine-grained subtype/form factor, characteristic working length/reach, long-versus-short configuration, outer contour, width/height/depth proportions, part topology/count, component coordinates, controls, openings, seams, attachments, material/color zones, texture, markings and functional relationships. Never cross into another subtype even when the broad product noun stays the same.",
       commerceKitPreset === "six-view"
-        ? "SIX-VIEW ORTHOGRAPHIC INFERENCE: For this six-view orthographic set, you MAY infer hidden sides (back, left, right, top, bottom) from the visible product geometry using consistent industrial design logic. Maintain exact proportions, part count, material zones and design language across all six views. Each view must be a true orthographic elevation/plan with zero perspective. If a detail is truly ambiguous, make a reasonable inference consistent with the visible design rather than omitting the view."
+        ? (sixViewLayout === "grid"
+          ? "SIX-VIEW ORTHOGRAPHIC GRID: Create ONE image with a clean 3x2 grid (top row: front, rear, left; bottom row: right, top, bottom) of six orthographic views of the SAME product. Pure white background, no text, equal cell spacing, zero perspective. Left and right are mirror opposites."
+          : "SIX-VIEW ORTHOGRAPHIC INFERENCE: For this six-view orthographic set, you MAY infer hidden sides (back, left, right, top, bottom) from the visible product geometry using consistent industrial design logic. Maintain exact proportions, part count, material zones and design language across all six views. Each view must be a true orthographic elevation/plan with zero perspective. If a detail is truly ambiguous, make a reasonable inference consistent with the visible design rather than omitting the view.")
         : "SOURCE-SUPPORTED VIEW ONLY: use only a camera/view visibly present in the uploaded product images. Do not rotate into an unseen side, invent hidden geometry, change perspective into a different model, or use a rendering/style reference as the product. When a requested role lacks a supported angle, keep the nearest uploaded pose and create variety through crop, scale, placement, scene, light, background and typography around the locked product.",
       styleReferenceImageCount
         ? "STYLE / LAYOUT REFERENCE FIREWALL: borrow only abstract composition rhythm, whitespace, visual hierarchy, background atmosphere, lighting mood, crop density and module cadence. Never transfer the reference product, category, silhouette, proportions, parts, accessories, packaging, brand, logo, wording, claims, prices, promotional elements or exact object placement. All factual content must come from the product sources and user text."
@@ -2636,7 +2650,9 @@ function buildCommerceFinalImagePrompt({
       `USER REQUIREMENT: ${compactText(notes?.trim() || "No extra requirement.", 620)}`,
       "PRODUCT IDENTITY GATE: compare the finished product against the uploaded sources. If any visible product edge, proportion, part, junction, hole, control, material/color zone or marking has drifted, restore the source product before output.",
       "Do not redesign, recolor, remove or add product parts. Do not invent logos, specifications, certifications, accessories, packaging, claims or unreadable pseudo-text.",
-      "Create one complete, polished, commercially usable image. Do not output a collage, contact sheet, split comparison, UI, wireframe, annotation board or explanatory text. Keep the product fully visible unless the assigned role is an intentional detail close-up."
+      (commerceKitPreset === "six-view" && sixViewLayout === "grid"
+        ? "Create ONE single image that IS the 3x2 orthographic grid board: six equal cells on a pure white background, each showing one orthographic view of the product. This is intentionally a multi-view reference board. No text, no labels, no borders."
+        : "Create one complete, polished, commercially usable image. Do not output a collage, contact sheet, split comparison, UI, wireframe, annotation board or explanatory text. Keep the product fully visible unless the assigned role is an intentional detail close-up.")
     ].join(" "),
     promptMaxChars
   );
@@ -3978,6 +3994,7 @@ export async function POST(req: Request) {
                     notes: effectiveNotes,
                     count,
                     commerceKitPreset: body.commerceKitPreset,
+                    sixViewLayout: body.sixViewLayout,
                     commerceDetailVisualStyle: body.commerceDetailVisualStyle,
                     commercePlatform,
                     commerceLocale,
@@ -4088,7 +4105,8 @@ export async function POST(req: Request) {
                     variantIndex: index,
                     totalCount: total,
                     promptMaxChars,
-                    commerceKitPreset: body.commerceKitPreset
+                    commerceKitPreset: body.commerceKitPreset,
+                    sixViewLayout: body.sixViewLayout
                   })
                 : buildFinalImagePrompt({
                     plannedPrompt: plannedCard.prompt,

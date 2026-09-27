@@ -106,6 +106,7 @@ export type GenerateRequest = {
   editRegionIntent?: LocalEditIntent;
   applicationMode?: "appearance-redesign" | "product-kit" | "detail-page";
   commerceKitPreset?: "auto" | "six-view" | "scene" | "white-bg" | "detail" | "lifestyle";
+  sixViewLayout?: "separate" | "grid";
   commercePlatform?: CommercePlatform;
   commerceLocale?: CommerceLocale;
   commerceResolution?: "standard" | "2K" | "4K";

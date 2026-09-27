@@ -76,6 +76,7 @@ export default function GeneratePanel({
   const [copyDensity, setCopyDensity] = useState("balanced");
   const [aspectRatio, setAspectRatio] = useState("1:1");
   const [kitPreset, setKitPreset] = useState("auto");
+  const [sixViewLayout, setSixViewLayout] = useState<"separate" | "grid">("separate");
   const [imageSize, setImageSize] = useState<"standard" | "2K" | "4K">("standard");
   const [isAiWriting, setIsAiWriting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -483,6 +484,7 @@ export default function GeneratePanel({
           } : {}),
           applicationMode: applicationMode !== "appearance-redesign" ? applicationMode : undefined,
           commerceKitPreset: applicationMode === "product-kit" && kitPreset !== "auto" ? kitPreset : undefined,
+          sixViewLayout: applicationMode === "product-kit" && kitPreset === "six-view" ? sixViewLayout : undefined,
           commercePlatform: applicationMode !== "appearance-redesign" ? commercePlatform : undefined,
           commerceLocale: applicationMode !== "appearance-redesign" ? commerceLocale : undefined,
           commerceResolution: applicationMode !== "appearance-redesign" ? commerceResolution : undefined,
@@ -1055,9 +1057,9 @@ export default function GeneratePanel({
                     key={preset.value}
                     onClick={() => {
                       setKitPreset(preset.value);
-                      // 选择六视图时自动调整生成数量为7（6视图+纯正交正面主图）
+                      // 选择六视图时自动调整生成数量
                       if (preset.value === "six-view") {
-                        setCount(7);
+                        setCount(sixViewLayout === "grid" ? 1 : 7);
                       }
                     }}
                     className={`rounded-lg border px-3 py-2 text-left transition-all ${
@@ -1072,6 +1074,47 @@ export default function GeneratePanel({
                     <div className="mt-0.5 text-[10px] text-white/40 line-clamp-1">{preset.desc}</div>
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* 六视图输出方式 - 仅选中六视图时显示 */}
+          {applicationMode === "product-kit" && kitPreset === "six-view" && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-white/70">六视图输出方式</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setSixViewLayout("separate");
+                    setCount(7);
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-left transition-all ${
+                    sixViewLayout === "separate"
+                      ? "border-indigo-400/50 bg-indigo-500/20"
+                      : "border-white/10 hover:border-white/20 bg-white/[0.03]"
+                  }`}
+                >
+                  <div className={`text-xs font-medium ${sixViewLayout === "separate" ? "text-white" : "text-white/70"}`}>
+                    独立 7 张
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-white/40">每个视角单独出一张高清图</div>
+                </button>
+                <button
+                  onClick={() => {
+                    setSixViewLayout("grid");
+                    setCount(1);
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-left transition-all ${
+                    sixViewLayout === "grid"
+                      ? "border-indigo-400/50 bg-indigo-500/20"
+                      : "border-white/10 hover:border-white/20 bg-white/[0.03]"
+                  }`}
+                >
+                  <div className={`text-xs font-medium ${sixViewLayout === "grid" ? "text-white" : "text-white/70"}`}>
+                    一张整版
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-white/40">3×2 六视图拼在一张图里</div>
+                </button>
               </div>
             </div>
           )}
