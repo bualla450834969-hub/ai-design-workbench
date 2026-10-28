@@ -238,7 +238,7 @@ export default function SettingsPanel() {
                 setLicenseCode(text.toUpperCase().trim());
                 e.preventDefault();
               }}
-              placeholder="输入授权码，例如 LIHUO-XXXX-XXXX"
+              placeholder="输入授权码，例如 LIHUO88888888"
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="characters"
@@ -258,7 +258,7 @@ export default function SettingsPanel() {
               {licenseStatus.valid ? (
                 <div className="space-y-1">
                   <p className="font-medium">✓ 授权码有效</p>
-                  <p>已绑定设备：{licenseStatus.deviceCount} / {licenseStatus.maxDevices}</p>
+                  <p>已绑定设备：{licenseStatus.unlimited ? `${licenseStatus.deviceCount} / 不限` : `${licenseStatus.deviceCount} / ${licenseStatus.maxDevices}`}</p>
                   <p>当前设备：{licenseStatus.thisDeviceBound ? "已绑定" : "未绑定"}</p>
                 </div>
               ) : (

@@ -1,21 +1,19 @@
 // 授权码管理模块
 // 支持文件存储（本地/Electron）和 Upstash Redis（生产）
 
-import { getAllLicenses, isLicenseValid, isLicenseUnlimited, MAX_DEVICES_PER_LICENSE } from './license-store';
+import { lookupLicense, normalizeLicenseCode, unknownLicenseMessage } from "@workbench/core/license";
+import { MAX_DEVICES_PER_LICENSE } from './license-store';
 
-// 内存存储（开发用）
-const memoryStore = new Map<string, Set<string>>(); // licenseCode -> Set<deviceId>
-
-// 获取所有有效授权码（从存储层读取）
-function getAllValidLicenseCodes(): string[] {
-  const licenses = getAllLicenses();
-  return licenses.filter(l => !l.disabled).map(l => l.code);
+declare global {
+  var __workbenchLicenseDevices: Map<string, Set<string>> | undefined;
 }
 
-// 检查授权码是否是无限设备的
-function isUnlimitedLicense(licenseCode: string): boolean {
-  const code = licenseCode.trim().toUpperCase();
-  return isLicenseUnlimited(code);
+// 内存存储（开发用）。挂在 globalThis 上，避免 Next 把每个 route 打成独立模块后绑定关系互相看不见。
+const memoryStore: Map<string, Set<string>> = globalThis.__workbenchLicenseDevices ?? new Map();
+globalThis.__workbenchLicenseDevices = memoryStore;
+
+function canonicalCode(licenseCode: string): string {
+  return normalizeLicenseCode(licenseCode);
 }
 
 // 检查是否配置了 Redis
@@ -87,13 +85,13 @@ export async function verifyAndBindLicense(
   licenseCode: string,
   deviceId: string
 ): Promise<{ valid: boolean; message: string; alreadyBound?: boolean; unlimited?: boolean }> {
-  const code = licenseCode.trim().toUpperCase();
-  const unlimited = isUnlimitedLicense(code);
+  const code = canonicalCode(licenseCode);
+  const record = lookupLicense(code);
+  const unlimited = Boolean(record?.unlimited);
 
-  // 1. 检查授权码是否有效
-  const validCodes = getAllValidLicenseCodes();
-  if (!validCodes.includes(code)) {
-    return { valid: false, message: "授权码无效，请检查后重试" };
+  // 1. 检查授权码是否有效（LIHUO/TESTER 形状不会被当成格式错误）
+  if (!record) {
+    return { valid: false, message: unknownLicenseMessage(code) };
   }
 
   // 2. 检查设备是否已绑定此授权码
@@ -132,12 +130,12 @@ export async function verifyLicenseOnly(
   licenseCode: string,
   deviceId: string
 ): Promise<{ valid: boolean; message: string }> {
-  const code = licenseCode.trim().toUpperCase();
-  const unlimited = isUnlimitedLicense(code);
+  const code = canonicalCode(licenseCode);
+  const record = lookupLicense(code);
+  const unlimited = Boolean(record?.unlimited);
 
-  const validCodes = getAllValidLicenseCodes();
-  if (!validCodes.includes(code)) {
-    return { valid: false, message: "授权码无效" };
+  if (!record) {
+    return { valid: false, message: unknownLicenseMessage(code) };
   }
 
   const alreadyBound = await isDeviceBound(code, deviceId);
@@ -168,11 +166,11 @@ export async function getLicenseStatus(
   thisDeviceBound: boolean;
   unlimited: boolean;
 }> {
-  const code = licenseCode.trim().toUpperCase();
-  const unlimited = isUnlimitedLicense(code);
-  const validCodes = getAllValidLicenseCodes();
+  const code = canonicalCode(licenseCode);
+  const record = lookupLicense(code);
+  const unlimited = Boolean(record?.unlimited);
 
-  if (!validCodes.includes(code)) {
+  if (!record) {
     return {
       valid: false,
       deviceCount: 0,
@@ -188,7 +186,7 @@ export async function getLicenseStatus(
   return {
     valid: true,
     deviceCount: boundDevices.length,
-    maxDevices: unlimited ? Infinity : MAX_DEVICES_PER_LICENSE,
+    maxDevices: unlimited ? 0 : MAX_DEVICES_PER_LICENSE,
     thisDeviceBound,
     unlimited,
   };

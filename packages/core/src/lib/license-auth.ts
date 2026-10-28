@@ -1,5 +1,6 @@
 ﻿import crypto from "node:crypto";
 import { getLicensePool, isLicenseDatabaseConfigured } from "../lib/license-db";
+import { lookupLicense, normalizeLicenseCode, unknownLicenseMessage } from "./license-catalog";
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 365;
 const TOKEN_REFRESH_GRACE_SECONDS = 60 * 60 * 24 * 365;
@@ -61,31 +62,8 @@ function getHashSecret() {
   return envString("LICENSE_HASH_SECRET", envString("APP_ACCESS_CODE", "license-hash-secret"));
 }
 
-function configuredAccessCodes() {
-  const legacyCode = envString("APP_ACCESS_CODE");
-  const codeList = envString("APP_ACCESS_CODES")
-    .split(/[\n,;，；]+/)
-    .map((code) => code.trim())
-    .filter(Boolean);
-  
-  // 也读取无限设备授权码（测试员授权码）
-  const unlimitedCodes = envString("UNLIMITED_LICENSE_CODES")
-    .split(/[\n,;，；]+/)
-    .map((code) => code.trim())
-    .filter(Boolean);
-  const testerCodes = envString("TESTER_LICENSE_CODES")
-    .split(/[\n,;，；]+/)
-    .map((code) => code.trim())
-    .filter(Boolean);
-
-  // 内置默认授权码（打包后也能用）
-  const defaultCodes = ["LIHUO88888888", "TESTER88888888"];
-
-  return Array.from(new Set([legacyCode, ...codeList, ...unlimitedCodes, ...testerCodes, ...defaultCodes].filter(Boolean)));
-}
-
 function normalizeCode(code: string) {
-  return code.trim().replace(/\s+/g, "").toUpperCase();
+  return normalizeLicenseCode(code);
 }
 
 function hashValue(scope: string, value: string) {
@@ -183,14 +161,8 @@ export function getLicenseRequestMeta(request: Request) {
 }
 
 async function activateLegacyLicense(code: string, deviceId: string): Promise<LicenseSession> {
-  const accessCodes = configuredAccessCodes();
-  if (!accessCodes.length) {
-    throw new LicenseError("服务端未配置授权码或授权数据库。", 500);
-  }
-
-  const normalized = normalizeCode(code);
-  const matched = accessCodes.some((item) => normalizeCode(item) === normalized);
-  if (!matched) throw new LicenseError("授权码不正确或已停用。");
+  const record = lookupLicense(code);
+  if (!record) throw new LicenseError(unknownLicenseMessage(code));
 
   const codeHash = hashLicenseCode(code);
   const deviceHash = hashDeviceId(deviceId);
@@ -199,9 +171,9 @@ async function activateLegacyLicense(code: string, deviceId: string): Promise<Li
     licenseId: "legacy",
     token,
     expiresAt,
-    maxDevices: 0,
+    maxDevices: record.unlimited ? 0 : 3,
     activeDevices: 1,
-    message: "授权已验证。"
+    message: record.unlimited ? "测试员授权已验证。" : "授权已验证。"
   };
 }
 
@@ -245,7 +217,11 @@ export async function activateLicense({
       [codeHash]
     );
     const license = licenseResult.rows[0];
-    if (!license) throw new LicenseError("授权码不正确或不存在。");
+    if (!license) {
+      await client.query("rollback").catch(() => undefined);
+      if (lookupLicense(code)) return activateLegacyLicense(code, deviceId);
+      throw new LicenseError(unknownLicenseMessage(code));
+    }
     if (license.status !== "active") throw new LicenseError("这个授权码已停用，请联系管理员。");
     if (dateExpired(license.expires_at)) throw new LicenseError("这个授权码已过期，请联系管理员。");
 

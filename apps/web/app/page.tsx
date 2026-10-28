@@ -32,26 +32,35 @@ export default function HomePage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
 
-  // 应用启动时检查授权状态（前端硬编码，兼容 Vercel）
+  // 启动时用和服务端相同的 LIHUO / TESTER 目录校验已保存授权码
   useEffect(() => {
-    const checkAuth = () => {
-      const savedLicense = getLicenseCode();
-      if (!savedLicense) {
-        setIsCheckingAuth(false);
-        return;
-      }
-
-      // 前端硬编码验证
-      const validCodes = ["TESTER88888888", "LIHUO88888888", "LIHUO000001"];
-      if (validCodes.includes(savedLicense.toUpperCase())) {
-        setIsAuthorized(true);
-      } else {
-        setIsAuthorized(false);
-      }
+    const savedLicense = getLicenseCode();
+    if (!savedLicense) {
       setIsCheckingAuth(false);
-    };
+      return;
+    }
 
-    checkAuth();
+    let cancelled = false;
+    const deviceId = getDeviceId();
+    fetch("/api/license/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ licenseCode: savedLicense, deviceId }),
+    })
+      .then((res) => res.json())
+      .then((result) => {
+        if (!cancelled) setIsAuthorized(Boolean(result.valid));
+      })
+      .catch(() => {
+        if (!cancelled) setIsAuthorized(false);
+      })
+      .finally(() => {
+        if (!cancelled) setIsCheckingAuth(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleGenerationComplete = useCallback((cards: ResultCard[]) => {

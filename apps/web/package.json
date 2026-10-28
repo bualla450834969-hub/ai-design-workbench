@@ -1,5 +1,5 @@
 {
-  "name": "ai-design-workbench",
+  "name": "@workbench/web",
   "version": "1.0.5",
   "private": true,
   "engines": {
