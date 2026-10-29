@@ -31,6 +31,14 @@ import LocalEditMask from "@/components/LocalEditMask";
 import { compositeLocalEdit } from "@/utils/local-edit-composite";
 import { useToast } from "@/components/Toast";
 
+const MIN_GENERATE_COUNT = 1;
+const MAX_GENERATE_COUNT = 100;
+
+function clampGenerateCount(value: number) {
+  if (!Number.isFinite(value)) return MIN_GENERATE_COUNT;
+  return Math.min(MAX_GENERATE_COUNT, Math.max(MIN_GENERATE_COUNT, Math.round(value)));
+}
+
 export default function GeneratePanel({
   generation,
   setGeneration,
@@ -53,6 +61,7 @@ export default function GeneratePanel({
   const [productName, setProductName] = useState("");
   const [variation, setVariation] = useState(65);
   const [count, setCount] = useState(2);
+  const [countDraft, setCountDraft] = useState("2");
   const [templateId, setTemplateId] = useState("smart-auto");
   const [costConfig] = useState(() => loadCostConfig());
   const [productImages, setProductImages] = useState<{ dataUrl: string; name: string }[]>([]);
@@ -89,11 +98,15 @@ export default function GeneratePanel({
       setProductName(pendingConfig.productName);
       setTemplateId(pendingConfig.templateId);
       setVariation(pendingConfig.variationLevel);
-      setCount(pendingConfig.count);
+      setCount(clampGenerateCount(pendingConfig.count));
       setNotes(pendingConfig.notes);
       onConfigApplied();
     }
   }, [pendingConfig, onConfigApplied]);
+
+  useEffect(() => {
+    setCountDraft(String(count));
+  }, [count]);
 
   // 处理"以此为原图"功能：从历史/结果页跳转过来时自动加载图片
   useEffect(() => {
@@ -1004,19 +1017,55 @@ export default function GeneratePanel({
         )}
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-white/70">生成数量</label>
-          <div className="flex flex-wrap gap-2">
-            {[1, 2, 3, 4, 6, 7, 10, 20, 50, 100].map((n) => (
-              <button
-                key={n}
-                onClick={() => setCount(n)}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                  count === n ? "bg-indigo-500/80 text-white" : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
-                }`}
-              >
-                {n}
-              </button>
-            ))}
+          <label className="mb-1.5 block text-xs font-medium text-white/70" htmlFor="generate-count">
+            生成数量
+          </label>
+          <div className="inline-flex items-center overflow-hidden rounded-lg border border-white/10">
+            <button
+              type="button"
+              aria-label="减少生成数量"
+              disabled={count <= MIN_GENERATE_COUNT}
+              onClick={() => setCount((current) => clampGenerateCount(current - 1))}
+              className="flex h-10 w-10 items-center justify-center bg-white/5 text-lg text-white/70 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              −
+            </button>
+            <input
+              id="generate-count"
+              type="number"
+              inputMode="numeric"
+              min={MIN_GENERATE_COUNT}
+              max={MAX_GENERATE_COUNT}
+              step={1}
+              aria-label="生成数量"
+              value={countDraft}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === "") {
+                  setCountDraft("");
+                  return;
+                }
+                if (!/^\d{1,3}$/.test(raw)) return;
+                setCountDraft(raw);
+                const next = Number(raw);
+                if (next >= MIN_GENERATE_COUNT && next <= MAX_GENERATE_COUNT) setCount(next);
+              }}
+              onBlur={() => {
+                const next = clampGenerateCount(Number(countDraft));
+                setCount(next);
+                setCountDraft(String(next));
+              }}
+              className="input-field h-10 w-16 border-x border-white/10 text-center text-sm font-medium [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <button
+              type="button"
+              aria-label="增加生成数量"
+              disabled={count >= MAX_GENERATE_COUNT}
+              onClick={() => setCount((current) => clampGenerateCount(current + 1))}
+              className="flex h-10 w-10 items-center justify-center bg-white/5 text-lg text-white/70 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              +
+            </button>
           </div>
         </div>
 
