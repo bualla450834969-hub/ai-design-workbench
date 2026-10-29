@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "functions": {
+    "/_middleware": {
+      "runtime": "nodejs",
+      "matchers": [
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/api(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(\\.json|\\.rsc|\\.segments\\/.+\\.segment\\.rsc)?[\\/#\\?]?$",
+          "originalSource": "/api/:path*"
+        }
+      ]
+    },
+    "/api/assets/[id]": {},
+    "/api/assets/upload": {},
+    "/api/projects/[id]": {},
+    "/api/projects/[id]/export": {},
+    "/api/projects/[id]/results": {},
+    "/api/recycle-bin": {},
+    "/api/web/auth/activate": {},
+    "/api/web/auth/status": {},
+    "/api/web/local-legacy": {},
+    "/api/web/providers": {},
+    "/api/web/providers/activate": {},
+    "/api/web/providers/models": {},
+    "/api/web/providers/test-text": {}
+  }
+}

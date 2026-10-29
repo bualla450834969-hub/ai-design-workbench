@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 2,
+  "updatedAt": "2026-10-10T00:00:00+08:00",
+  "providers": [
+    {
+      "type": "geekai",
+      "title": "GeekAI",
+      "name": "GeekAI / Geeknow",
+      "baseUrl": "https://geeknow.ai",
+      "note": "推荐",
+      "registerUrl": "https://geeknow.ai/register?aff=am7H",
+      "modelCatalog": [],
+      "modelLabels": {},
+      "imagePrices": {},
+      "textPrices": {}
+    },
+    {
+      "type": "apiyi",
+      "title": "API易",
+      "name": "API易",
+      "baseUrl": "https://api.apiyi.com/v1",
+      "note": "国内备用",
+      "registerUrl": "https://api.apiyi.com/register/?aff_code=INEC",
+      "modelCatalog": ["gemini-nano-banana-2.1"],
+      "modelLabels": {"gemini-nano-banana-2.1": "Nano Banana 2.1"},
+      "imagePrices": {},
+      "textPrices": {}
+    },
+    {
+      "type": "aihubmix",
+      "title": "AIHubMix",
+      "name": "AIHubMix",
+      "baseUrl": "https://aihubmix.com/v1",
+      "note": "需科学上网",
+      "registerUrl": "https://aihubmix.com/?aff=7wWd",
+      "modelCatalog": ["gemini-nano-banana-2.1"],
+      "modelLabels": {"gemini-nano-banana-2.1": "Nano Banana 2.1"},
+      "imagePrices": {},
+      "textPrices": {}
+    }
+  ],
+  "featureFlags": {}
+}

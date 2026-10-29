@@ -1,0 +1,179 @@
+{
+  "name": "industrial-design-agent",
+  "version": "1.8.0",
+  "description": "工业设计智能体 INDUSTRIAL AI",
+  "author": "Industrial Design AI Studio",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "next dev",
+    "build": "node scripts/prepare-web-build.mjs && next build",
+    "start": "node .next/standalone/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "worker": "node scripts/worker.mjs",
+    "db:migrate": "psql $DATABASE_URL -f deploy/schema.sql",
+    "desktop:icons": "node desktop/build-icons.cjs",
+    "desktop:stage": "node desktop/stage-server.cjs",
+    "desktop:preview": "npm run build && npm run desktop:stage && electron .",
+    "desktop:pack": "npm run build && npm run desktop:stage && npm run desktop:icons && electron-builder --dir",
+    "desktop:portable": "npm run build && npm run desktop:stage && npm run desktop:icons && electron-builder --win portable",
+    "desktop:installer": "npm run build && npm run desktop:stage && npm run desktop:icons && electron-builder --win nsis --publish never",
+    "clean": "node scripts/clean.cjs",
+    "desktop:delivery": "npm run clean && npm run build && npm run desktop:stage && npm run desktop:icons && electron-builder --win nsis --publish never && powershell -NoProfile -ExecutionPolicy Bypass -File desktop/package-installer-delivery.ps1",
+    "desktop:delivery-mac": "node desktop/run-mac-build.cjs",
+    "desktop:delivery-mac-arm64": "node desktop/build-macos-dictation.cjs && npm run clean && npm run build && cross-env DESKTOP_TARGET_PLATFORM=darwin DESKTOP_TARGET_ARCH=arm64 npm run desktop:stage && npm run desktop:icons && electron-builder --mac dmg zip --arm64 --publish never && node desktop/package-delivery-mac.cjs arm64",
+    "desktop:delivery-mac-x64": "node desktop/build-macos-dictation.cjs && npm run clean && npm run build && cross-env DESKTOP_TARGET_PLATFORM=darwin DESKTOP_TARGET_ARCH=x64 npm run desktop:stage && npm run desktop:icons && electron-builder --mac dmg zip --x64 --publish never && node desktop/package-delivery-mac.cjs x64",
+    "desktop:folder": "npm run clean && npm run build && npm run desktop:stage && npm run desktop:icons && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --publish never && powershell -NoProfile -ExecutionPolicy Bypass -File desktop/package-folder.ps1",
+    "desktop:dist": "npm run clean && npm run build && npm run desktop:stage && npm run desktop:icons && electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.11.3",
+    "drizzle-orm": "0.45.2",
+    "electron-updater": "^6.8.9",
+    "lucide-react": "^0.468.0",
+    "mammoth": "1.12.3",
+    "next": "16.3.8",
+    "pdf-parse": "2.4.5",
+    "pg-boss": "12.27.0",
+    "postgres": "3.4.9",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "sharp": "0.35.5",
+    "undici": "7.30.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "43.7.6",
+    "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.2",
+    "png2icons": "^2.0.1",
+    "tsx": "^4.20.3",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11",
+    "wait-on": "^9.1.0"
+  },
+  "overrides": {
+    "source-map-js": "1.2.2",
+    "@xmldom/xmldom": "0.9.12",
+    "plist": {
+      "@xmldom/xmldom": "0.8.11"
+    }
+  },
+  "build": {
+    "appId": "cn.zhengshixiong.industrialdesignagent",
+    "productName": "工业设计智能体",
+    "asar": true,
+    "asarUnpack": [
+      "desktop/macos-dictation.node"
+    ],
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist-desktop",
+      "buildResources": "desktop/assets"
+    },
+    "files": [
+      "desktop/main.cjs",
+      "desktop/macos-dictation.node",
+      "desktop/maintenance.cjs",
+      "desktop/snapshot-maintenance.cjs",
+      "desktop/preload.cjs",
+      "desktop/license.cjs",
+      "desktop/license-public.pem",
+      "desktop/license-config.json",
+      "desktop/update.cjs",
+      "desktop/auto-update.cjs",
+      "desktop/runtime-config.cjs",
+      "desktop/providers.cjs",
+      "desktop/system-proxy.cjs",
+      "desktop/build-info.json",
+      "desktop/activation.html",
+      "desktop/activation.css",
+      "package.json",
+      "!node_modules/**/*",
+      "node_modules/electron-updater/**/*",
+      "node_modules/builder-util-runtime/**/*",
+      "node_modules/fs-extra/**/*",
+      "node_modules/graceful-fs/**/*",
+      "node_modules/jsonfile/**/*",
+      "node_modules/universalify/**/*",
+      "node_modules/js-yaml/**/*",
+      "node_modules/argparse/**/*",
+      "node_modules/lazy-val/**/*",
+      "node_modules/lodash.escaperegexp/**/*",
+      "node_modules/semver/**/*",
+      "node_modules/tiny-typed-emitter/**/*",
+      "node_modules/debug/**/*",
+      "node_modules/ms/**/*",
+      "node_modules/sax/**/*",
+      "node_modules/lodash.isequal/**/*",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/windows-voice-typing.ps1",
+        "to": "windows-voice-typing.ps1"
+      },
+      {
+        "from": ".next/standalone",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!.data{,/**/*}",
+          "!node_modules/{@types,typescript,vitest}/**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "desktop/assets/icon.ico",
+      "publish": [
+        {
+          "provider": "generic",
+          "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/"
+        }
+      ],
+      "target": [
+        "nsis",
+        "portable",
+        "dir"
+      ]
+    },
+    "mac": {
+      "icon": "desktop/assets/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.graphics-design",
+      "minimumSystemVersion": "12.0.0",
+      "hardenedRuntime": true,
+      "notarize": true,
+      "artifactName": "Industrial-Design-Agent-${version}-mac-${arch}.${ext}",
+      "publish": [
+        {
+          "provider": "generic",
+          "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/mac/"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "Industrial-Design-Agent-Setup-${version}-${arch}.${ext}",
+      "deleteAppDataOnUninstall": false,
+      "include": ""
+    },
+    "portable": {
+      "artifactName": "Industrial-Design-Agent-Portable-${arch}.${ext}"
+    }
+  }
+}

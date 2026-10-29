@@ -1,0 +1,3 @@
+module.exports=[874,(e,r,s)=>{r.exports=e.x("buffer",()=>require("buffer"))},27699,(e,r,s)=>{r.exports=e.x("events",()=>require("events"))},22734,(e,r,s)=>{r.exports=e.x("fs",()=>require("fs"))},46786,(e,r,s)=>{r.exports=e.x("os",()=>require("os"))},88947,(e,r,s)=>{r.exports=e.x("stream",()=>require("stream"))},92509,(e,r,s)=>{r.exports=e.x("url",()=>require("url"))},24361,(e,r,s)=>{r.exports=e.x("util",()=>require("util"))}];
+
+//# sourceMappingURL=%5Bexternals%5D__09t-jni._.js.map

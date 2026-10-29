@@ -1,0 +1,26 @@
+1:"$Sreact.fragment"
+2:I[78982,["/_next/static/chunks/1-rz49gd76fds.js","/_next/static/chunks/1-xt9xdv3-ppg.js"],"LoginClient"]
+3:I[97367,["/_next/static/chunks/1-rz49gd76fds.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+8:I[97367,["/_next/static/chunks/1-rz49gd76fds.js"],"ViewportBoundary"]
+9:I[97367,["/_next/static/chunks/1-rz49gd76fds.js"],"MetadataBoundary"]
+a:I[27201,["/_next/static/chunks/1-rz49gd76fds.js"],"IconMark"]
+c:I[39756,["/_next/static/chunks/1-rz49gd76fds.js"],"default"]
+d:I[37457,["/_next/static/chunks/1-rz49gd76fds.js"],"default"]
+10:I[33334,["/_next/static/chunks/1-rz49gd76fds.js"],"PwaRegister"]
+11:I[78972,["/_next/static/chunks/1-rz49gd76fds.js"],"PwaInstallHelp"]
+:HL["/_next/static/chunks/0asqducjo606-.css","style"]
+:HL["/_next/static/chunks/09xspl9z5aq4d.css","style"]
+7:X
+f:X
+f:C
+0:{"buildId":"LnTrQ5GlBriGEMoq82ETF","data":[{"rsc":["$","$1","c",{"children":[["$","$L2",null,{}],[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/0asqducjo606-.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/1-xt9xdv3-ppg.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":"$@6","staleTime":"$7","varyParams":null},{"rsc":["$","$1","h",{"children":[null,["$","$L8",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1, viewport-fit=cover"}],["$","meta","2",{"name":"theme-color","content":"#f7f7f5"}]]}],["$","div",null,{"hidden":true,"children":["$","$L9",null,{"children":["$","$4",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"工业设计智能体 · INDUSTRIAL AI"}],["$","meta","1",{"name":"description","content":"从外观改款到渲染、精修与多视图的一站式产品外观设计工作台"}],["$","link","2",{"rel":"manifest","href":"/manifest.webmanifest"}],["$","meta","3",{"name":"mobile-web-app-capable","content":"yes"}],["$","meta","4",{"name":"apple-mobile-web-app-title","content":"工业设计智能体"}],["$","meta","5",{"name":"apple-mobile-web-app-status-bar-style","content":"default"}],["$","link","6",{"rel":"icon","href":"/icons/icon.svg","type":"image/svg+xml"}],["$","link","7",{"rel":"icon","href":"/icons/icon-192.png","sizes":"192x192","type":"image/png"}],["$","link","8",{"rel":"apple-touch-icon","href":"/icons/apple-touch-icon.png","sizes":"180x180","type":"image/png"}],["$","$La","9",{}]]}]}]}],null]}],"isPartial":"$@b","staleTime":"$7","varyParams":null},{"rsc":["$","$1","c",{"children":[null,["$","$Lc",null,{"parallelRouterKey":"children","template":["$","$Ld",null,{}]}]]}],"isPartial":"$@e","staleTime":"$7","varyParams":"$f"},{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/09xspl9z5aq4d.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/1-rz49gd76fds.js","async":true}]],["$","html",null,{"lang":"zh-CN","children":["$","body",null,{"children":[["$","$L10",null,{}],["$","$Lc",null,{"parallelRouterKey":"children","template":["$","$Ld",null,{}],"notFound":[[["$","title",null,{"children":"404: This page could not be found."}],["$","div",null,{"style":{"fontFamily":"system-ui,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\"","height":"100vh","textAlign":"center","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center"},"children":["$","div",null,{"children":[["$","style",null,{"dangerouslySetInnerHTML":{"__html":"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}"}}],["$","h1",null,{"className":"next-error-h1","style":{"display":"inline-block","margin":"0 20px 0 0","padding":"0 23px 0 0","fontSize":24,"fontWeight":500,"verticalAlign":"top","lineHeight":"49px"},"children":404}],["$","div",null,{"style":{"display":"inline-block"},"children":["$","h2",null,{"style":{"fontSize":14,"fontWeight":400,"lineHeight":"49px","margin":0},"children":"This page could not be found."}]}]]}]}]],[]]}],["$","$L11",null,{}]]}]}]]}],"isPartial":"$@12","staleTime":"$7","varyParams":null}],"isUpgradeableISRFallback":false,"a":"$@13","rootVaryParams":null,"needsRuntimeRequest":"$@14"}
+5:null
+7:300
+14:true
+7:C
+13:0
+b:"$undefined"
+e:"$undefined"
+12:"$undefined"
+6:"$undefined"
