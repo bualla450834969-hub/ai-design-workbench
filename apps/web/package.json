@@ -3,7 +3,7 @@
   "version": "1.0.5",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
   "main": "electron/main.js",
   "repository": {

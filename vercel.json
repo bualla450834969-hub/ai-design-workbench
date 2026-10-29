@@ -5,6 +5,6 @@
   "framework": "nextjs",
   "regions": ["hkg1"],
   "env": {
-    "NODE_VERSION": "20.x"
+    "NODE_VERSION": "24.x"
   }
 }
