@@ -1,8 +1,13 @@
-﻿// 授权码管理 - 数据存储层
-// 支持文件存储（本地/Electron）和 Redis（生产）
+﻿// 授权码存储。有效码的唯一来源是 @workbench/core/license
+// （内置 LIHUO / TESTER、data/licenses.json、环境变量）。
 
-import * as fs from 'fs';
-import * as path from 'path';
+import {
+  loadLicenseCatalog,
+  lookupLicense,
+  readStoredLicenseFile,
+  writeStoredLicenseFile,
+  type LicenseRecord,
+} from "@workbench/core/license";
 
 export interface LicenseCode {
   code: string;
@@ -14,41 +19,28 @@ export interface LicenseCode {
 
 const MAX_DEVICES_PER_LICENSE = 3;
 
-// 文件存储路径
-const dataDir = path.join(process.cwd(), 'data');
-const licensesFile = path.join(dataDir, 'licenses.json');
-
-// 确保数据目录存在
-function ensureDataDir() {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+function toLicenseCode(record: LicenseRecord): LicenseCode {
+  return {
+    code: record.code,
+    createdAt: record.createdAt ?? Date.now(),
+    unlimited: record.unlimited,
+    disabled: record.disabled,
+    note: record.note,
+  };
 }
 
-// 读取所有授权码
 export function getAllLicenses(): LicenseCode[] {
-  // 直接返回默认授权码列表，不读写文件（兼容 Vercel Serverless）
-  return [
-    { code: 'LIHUO88888888', createdAt: Date.now(), unlimited: false, disabled: false, note: '管理员授权码' },
-    { code: 'TESTER88888888', createdAt: Date.now(), unlimited: true, disabled: false, note: '测试员授权码（无限设备）' },
-    { code: 'LIHUO479624', createdAt: Date.now(), unlimited: false, disabled: false, note: '' },
-    { code: 'LIHUO244331', createdAt: Date.now(), unlimited: false, disabled: false, note: '' },
-    { code: 'LIHUO696506', createdAt: Date.now(), unlimited: false, disabled: false, note: '' },
-    { code: 'LIHUO954400', createdAt: Date.now(), unlimited: false, disabled: false, note: '' },
-    { code: 'LIHUO844214', createdAt: Date.now(), unlimited: false, disabled: false, note: '' },
-  ];
-}
-export function saveLicenses(licenses: LicenseCode[]): void {
-  ensureDataDir();
-  fs.writeFileSync(licensesFile, JSON.stringify(licenses, null, 2));
+  return loadLicenseCatalog().map(toLicenseCode);
 }
 
-// 生成新授权码
+export function saveLicenses(licenses: LicenseCode[]): void {
+  writeStoredLicenseFile(licenses);
+}
+
 export function generateLicenseCode(unlimited: boolean = false, note?: string): LicenseCode {
-  // 生成 LIHUO + 6位随机数字
   const random = Math.floor(100000 + Math.random() * 900000);
   const code = `LIHUO${random}`;
-  
+
   const license: LicenseCode = {
     code,
     createdAt: Date.now(),
@@ -57,49 +49,36 @@ export function generateLicenseCode(unlimited: boolean = false, note?: string): 
     note,
   };
 
-  const licenses = getAllLicenses();
+  const licenses = readStoredLicenseFile().map(toLicenseCode);
   licenses.push(license);
-  saveLicenses(licenses);
+  writeStoredLicenseFile(licenses);
 
   return license;
 }
 
-// 禁用/启用授权码
 export function toggleLicenseDisabled(code: string): boolean {
-  const licenses = getAllLicenses();
-  const license = licenses.find(l => l.code === code);
-  if (license) {
-    license.disabled = !license.disabled;
-    saveLicenses(licenses);
-    return license.disabled;
-  }
-  return false;
+  const licenses = readStoredLicenseFile().map(toLicenseCode);
+  const license = licenses.find((item) => item.code === code);
+  if (!license) return false;
+  license.disabled = !license.disabled;
+  writeStoredLicenseFile(licenses);
+  return license.disabled;
 }
 
-// 删除授权码
 export function deleteLicense(code: string): boolean {
-  let licenses = getAllLicenses();
-  const initialLength = licenses.length;
-  licenses = licenses.filter(l => l.code !== code);
-  if (licenses.length !== initialLength) {
-    saveLicenses(licenses);
-    return true;
-  }
-  return false;
+  const licenses = readStoredLicenseFile().map(toLicenseCode);
+  const next = licenses.filter((item) => item.code !== code);
+  if (next.length === licenses.length) return false;
+  writeStoredLicenseFile(next);
+  return true;
 }
 
-// 检查授权码是否有效
 export function isLicenseValid(code: string): boolean {
-  const licenses = getAllLicenses();
-  const license = licenses.find(l => l.code === code);
-  return !!(license && !license.disabled);
+  return Boolean(lookupLicense(code));
 }
 
-// 检查授权码是否无限设备
 export function isLicenseUnlimited(code: string): boolean {
-  const licenses = getAllLicenses();
-  const license = licenses.find(l => l.code === code);
-  return license?.unlimited || false;
+  return Boolean(lookupLicense(code)?.unlimited);
 }
 
 export { MAX_DEVICES_PER_LICENSE };

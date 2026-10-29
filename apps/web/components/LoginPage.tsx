@@ -13,17 +13,32 @@ export default function LoginPage({ onAuthorized }: LoginPageProps) {
   const [error, setError] = useState("");
   const [isAutoChecking, setIsAutoChecking] = useState(false);
 
-  // 页面加载时，如果有保存的授权码，自动验证（前端硬编码）
+  // 已保存的授权码走和服务端同一套 LIHUO / TESTER 校验
   useEffect(() => {
     const savedCode = getLicenseCode();
-    if (savedCode) {
-      setIsAutoChecking(true);
-      const validCodes = ["TESTER88888888", "LIHUO88888888", "LIHUO000001"];
-      if (validCodes.includes(savedCode.toUpperCase())) {
-        onAuthorized();
-      }
-      setIsAutoChecking(false);
-    }
+    if (!savedCode) return;
+
+    let cancelled = false;
+    setIsAutoChecking(true);
+    const deviceId = getDeviceId();
+    fetch("/api/license/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ licenseCode: savedCode, deviceId }),
+    })
+      .then((res) => res.json())
+      .then((result) => {
+        if (cancelled) return;
+        if (result.valid) onAuthorized();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setIsAutoChecking(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [onAuthorized]);
 
   const handleVerify = async () => {
@@ -35,19 +50,25 @@ export default function LoginPage({ onAuthorized }: LoginPageProps) {
     setIsVerifying(true);
     setError("");
 
-    // 前端硬编码验证，不需要后端（兼容 Vercel Serverless）
-    const validCodes = ["TESTER88888888", "LIHUO88888888", "LIHUO000001"];
-    const code = licenseCode.trim().toUpperCase();
-    
-    setTimeout(() => {
-      if (validCodes.includes(code)) {
-        saveLicenseCode(code);
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch("/api/license/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ licenseCode, deviceId }),
+      });
+      const result = await res.json();
+      if (result.valid) {
+        saveLicenseCode(licenseCode.trim().toUpperCase());
         onAuthorized();
       } else {
-        setError("授权码无效，请检查后重试");
+        setError(result.message || "授权码无效，请检查后重试");
       }
+    } catch {
+      setError("无法连接授权服务，请确认网页已启动");
+    } finally {
       setIsVerifying(false);
-    }, 500);
+    }
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {

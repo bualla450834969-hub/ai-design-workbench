@@ -16,13 +16,17 @@
     "./providers": {
       "types": "./dist/providers/index.d.ts",
       "import": "./dist/providers/index.js"
+    },
+    "./license": {
+      "types": "./dist/lib/license-catalog.d.ts",
+      "import": "./dist/lib/license-catalog.js"
     }
   },
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
-    "test": "npm run typecheck",
+    "test": "npm run typecheck && node --experimental-strip-types --test __tests__/license-catalog.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

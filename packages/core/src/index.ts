@@ -82,6 +82,17 @@ export { ensureGeneratedImageResolution } from "./lib/image-resolution";
 // 授权
 export { requireLicense, activateLicense, LicenseError } from "./lib/license-auth";
 export type { LicenseSession } from "./lib/license-auth";
+export {
+  clearLicenseCatalogCache,
+  isLihuoTesterCode,
+  loadLicenseCatalog,
+  lookupLicense,
+  normalizeLicenseCode,
+  readStoredLicenseFile,
+  unknownLicenseMessage,
+  writeStoredLicenseFile,
+} from "./lib/license-catalog";
+export type { LicenseRecord } from "./lib/license-catalog";
 
 // 核心生成引擎（完整 pipeline）
 export { POST as runGenerationPipeline } from "./pipeline/generate-engine";
