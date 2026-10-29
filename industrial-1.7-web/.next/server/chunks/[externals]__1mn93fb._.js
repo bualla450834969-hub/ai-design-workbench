@@ -1,0 +1,3 @@
+module.exports=[54799,(e,r,o)=>{r.exports=e.x("crypto",()=>require("crypto"))},22734,(e,r,o)=>{r.exports=e.x("fs",()=>require("fs"))},4446,(e,r,o)=>{r.exports=e.x("net",()=>require("net"))},2157,(e,r,o)=>{r.exports=e.x("node:fs",()=>require("node:fs"))},25127,(e,r,o)=>{r.exports=e.x("node:worker_threads",()=>require("node:worker_threads"))},46786,(e,r,o)=>{r.exports=e.x("os",()=>require("os"))},60438,(e,r,o)=>{r.exports=e.x("perf_hooks",()=>require("perf_hooks"))},88947,(e,r,o)=>{r.exports=e.x("stream",()=>require("stream"))},55004,(e,r,o)=>{r.exports=e.x("tls",()=>require("tls"))}];
+
+//# sourceMappingURL=%5Bexternals%5D__1mn93fb._.js.map

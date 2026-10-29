@@ -12,6 +12,11 @@ export function projectResultAssets(assets: Asset[]) {
   return [...unique.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
+/** Preview project results oldest-first so “previous” reaches an earlier generated image. */
+export function projectResultPreviewAssets(projectAssets: Asset[], currentBatch: Asset[], projectId: string) {
+  return projectResultAssets([...currentBatch, ...projectAssets].filter((asset) => asset.projectId === projectId)).reverse();
+}
+
 export interface ProjectResultDisplayEntry { asset: Asset; displayName: string }
 
 /** Use verified image types for recovered images whose historical extension may be stale. */

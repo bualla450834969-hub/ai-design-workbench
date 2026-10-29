@@ -81,13 +81,14 @@ export async function flushLatestSnapshot<T extends object>(readLatest: () => T 
 export function parameterStateFromRequest(current: ProjectWorkspaceState, request: NonNullable<GenerationResult["requestSnapshot"]>, selectedAssets: string[]) {
   const settings = request.settings || {};
   const local = request.agentId === "local-retouch" || settings.generationMode === "local";
-  const workflowKind = (local ? ["shape", "cmf", "decal"] : ["shape", "view", "cmf", "decal", "scene"]).includes(String(settings.workflowKind)) ? settings.workflowKind as NonNullable<ProjectWorkspaceState["workflowKind"]> : "shape";
-  const directionKeys = { shape: "appearance-variants", view: "multi-view", cmf: "cmf-colorways", decal: "detail-view", scene: "render-studio" };
+  const workflowKind = (local ? ["shape", "cmf", "decal"] : ["shape", "view", "cmf", "decal", "scene", "packaging", "detail"]).includes(String(settings.workflowKind)) ? settings.workflowKind as NonNullable<ProjectWorkspaceState["workflowKind"]> : "shape";
+  const directionKeys = { shape: "appearance-variants", view: "multi-view", cmf: "cmf-colorways", decal: "detail-view", scene: "render-studio", packaging: "appearance-variants:packaging", detail: "appearance-variants:detail" };
   const directionKey = local ? `local-retouch:${workflowKind}` : directionKeys[workflowKind];
   return normalizeProjectWorkspaceState({ ...current, workspaceMode: "parameter", selectedAssets, input: request.content,
     agentId: local ? "local-retouch" : "appearance-variants", workflowKind,
     generationMode: ["source", "reference", "text", "local"].includes(String(settings.generationMode)) ? settings.generationMode as NonNullable<ProjectWorkspaceState["generationMode"]> : current.generationMode,
     specifiedAngle: settings.designDirection === "指定角度" ? String(settings.freeChatViews || "") : "",
+    showDimensions: settings.showDimensions !== false,
     outputCount: Number(settings.outputCount) || 1, boardItems: Number(settings.boardItems) || 1, reconstructionRatio: Number(settings.reconstructionRatio) || 0,
     resolution: (settings.resolution || "1K") as "1K" | "2K" | "4K", aspectRatio: (settings.aspectRatio || "auto") as NonNullable<ProjectWorkspaceState["aspectRatio"]>,
     designDirections: { ...current.designDirections, [directionKey]: String(settings.designDirection || "自动判断") },

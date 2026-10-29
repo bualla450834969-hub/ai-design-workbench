@@ -1,4 +1,6 @@
 /** Stateless, browser-only model transport. No application API, cookies or proxy fallback. */
+import { isRelayRouterGeminiImageModel, isRelayRouterImageModel } from "@/lib/model-pricing";
+
 export type BrowserDirectProvider = Pick<DesktopProviderDraft, "type" | "baseUrl" | "textModel" | "imageModel"> & { apiKey: string; name?: string };
 export type DirectImageInput = { mimeType: string; data: string };
 export type DirectImage = { blob: Blob; prompt?: string };
@@ -12,9 +14,11 @@ const MIB = 1024 * 1024;
 const MAX_IMAGE_BYTES = 40 * MIB;
 const MAX_JSON_BYTES = 60 * MIB;
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+type DirectStage = "模型列表" | "文字分析" | "图片生成" | "图片下载";
+type DirectDiagnostics = { stage: DirectStage; apiKey: string; privateText?: readonly string[] };
 
 export class BrowserDirectError extends Error {
-  constructor(message: string, readonly code: "configuration" | "authorization" | "network" | "timeout" | "http" | "response" | "image", readonly status?: number) {
+  constructor(message: string, readonly code: "configuration" | "authorization" | "network" | "timeout" | "http" | "response" | "image", readonly status?: number, readonly stage?: DirectStage) {
     super(message);
     this.name = "BrowserDirectError";
   }
@@ -60,7 +64,7 @@ function validatedProvider(provider: BrowserDirectProvider) {
   const url = publicUrl(provider.baseUrl.trim(), true);
   const apiKey = provider.apiKey.trim();
   if (!apiKey || apiKey.length > 800 || /[\r\n]/.test(apiKey)) fail("请填写有效的模型 API Key。", "configuration");
-  if (!["geekai", "apiyi", "aihubmix", "openai-compatible"].includes(provider.type)) fail("不支持此供应商接口类型。", "configuration");
+  if (!["geekai", "apiyi", "aihubmix", "relayrouter", "openai-compatible"].includes(provider.type)) fail("不支持此供应商接口类型。", "configuration");
   return { ...provider, apiKey, baseUrl: url.toString().replace(/\/+$/, "") };
 }
 /** Local settings can reuse transport validation before persisting or checking a license. */
@@ -75,7 +79,7 @@ function modelId(value: string) {
 }
 function name(provider: BrowserDirectProvider) { return provider.name || provider.type; }
 
-async function request<T>(options: DirectRequestOptions, defaultTimeout: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+async function request<T>(options: DirectRequestOptions, defaultTimeout: number, run: (signal: AbortSignal) => Promise<T>, diagnostics: DirectDiagnostics): Promise<T> {
   throwIfAborted(options.signal);
   const controller = new AbortController();
   const requested = options.timeoutMs ?? defaultTimeout;
@@ -85,14 +89,15 @@ async function request<T>(options: DirectRequestOptions, defaultTimeout: number,
   const interrupted = new Promise<never>((_resolve, reject) => {
     abortListener = () => { controller.abort(); reject(abortError()); };
     options.signal?.addEventListener("abort", abortListener, { once: true });
-    timer = setTimeout(() => { controller.abort(); reject(new BrowserDirectError("供应商直连超时；不会自动重试。生成请求可能已计费，请先核对供应商任务记录。", "timeout")); }, timeout);
+    timer = setTimeout(() => { controller.abort(); reject(new BrowserDirectError(`${diagnostics.stage}：供应商直连超时；不会自动重试。生成请求可能已计费，请先核对供应商任务记录。`, "timeout", undefined, diagnostics.stage)); }, timeout);
   });
   try {
     return await Promise.race([run(controller.signal), interrupted]);
   } catch (error) {
     if (options.signal?.aborted) throw abortError();
-    if (error instanceof BrowserDirectError || error instanceof DOMException && error.name === "AbortError") throw error;
-    throw new BrowserDirectError("浏览器无法直连供应商：可能是供应商未开放跨域（CORS）、网络或地区限制。请核对供应商浏览器直连支持；本站不会中转，也不会自动重试付费请求。", "network");
+    if (error instanceof BrowserDirectError) throw error.stage ? error : new BrowserDirectError(`${diagnostics.stage}：${error.message}`, error.code, error.status, diagnostics.stage);
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new BrowserDirectError(`${diagnostics.stage}：浏览器无法直连供应商，可能是供应商未开放跨域（CORS）、网络或地区限制。请核对供应商浏览器直连支持；本站不会中转，也不会自动重试付费请求。`, "network", undefined, diagnostics.stage);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     if (abortListener) options.signal?.removeEventListener("abort", abortListener);
@@ -123,14 +128,43 @@ async function bytes(response: Response, limit: number): Promise<Uint8Array<Arra
   for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
   return output;
 }
-async function requireOk(response: Response) {
-  if (response.ok) return;
-  await response.body?.cancel();
-  // Never echo an upstream error body; it can contain a key or user content.
-  throw new BrowserDirectError(`模型供应商拒绝请求（HTTP ${response.status}）。${response.status === 401 || response.status === 403 ? "请核对供应商账号、密钥、模型权限及来源限制。" : response.status === 429 ? "供应商正在限流，请稍后手动重试。" : "请核对供应商状态与任务记录。"}不会自动重试付费请求。`, "http", response.status);
+function safeRequestId(response: Response, diagnostics: DirectDiagnostics) {
+  // Only deliberately exposed correlation headers are considered. Unknown text,
+  // URLs, query strings and credential-looking values never reach the UI/store.
+  const format = /^(?:[a-f0-9]{16,64}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|req[_-][a-z0-9]{16,48})$/i;
+  for (const header of ["x-request-id", "request-id", "x-correlation-id"]) {
+    const value = response.headers.get(header)?.trim() || "";
+    if (value.length > 64 || !format.test(value) || /sk[-_]|bearer|authorization|api[-_]?key|token/i.test(value)) continue;
+    const candidates = [value.toLowerCase(), value.replace(/^req[_-]/i, "").toLowerCase()];
+    const privateValues = [diagnostics.apiKey, ...(diagnostics.privateText || [])].filter(Boolean);
+    if (privateValues.some((text) => candidates.some((candidate) => text.toLowerCase().includes(candidate) || candidate.includes(text.toLowerCase())))) continue;
+    return value;
+  }
+  return "";
 }
-async function json(response: Response, limit = MAX_JSON_BYTES): Promise<JsonObject> {
-  await requireOk(response);
+async function requireOk(response: Response, diagnostics: DirectDiagnostics) {
+  if (response.ok) return;
+  const requestId = safeRequestId(response, diagnostics);
+  await response.body?.cancel().catch(() => undefined);
+  // No upstream body is read, echoed or retained. In particular, status 503
+  // alone cannot establish that a model is missing or that a channel is busy.
+  const reason = response.status === 402 ? "供应商账户余额不足"
+    : response.status === 404 ? "供应商接口或所选模型不存在"
+    : response.status === 413 ? "供应商拒绝过大的图片或请求"
+    : response.status === 429 ? "供应商正在限流"
+    : response.status === 503 ? "供应商服务或当前模型通道暂不可用"
+    : response.status >= 500 ? "供应商服务暂不可用" : "模型供应商请求失败";
+  const advice = response.status === 401 || response.status === 403 ? "请核对供应商账号、密钥、模型权限及来源限制。"
+    : response.status === 402 ? "请检查供应商余额，确认后再手动重试。"
+    : response.status === 404 ? "请刷新模型目录，并核对接口地址与所选模型。"
+    : response.status === 413 ? "请减少参考图数量或降低图片分辨率。"
+    : response.status === 429 ? "请稍后核对供应商限流与并发额度，再手动重试。"
+    : response.status === 503 ? "请在供应商后台核对所选模型、分组与可用通道；图片请求可能已计费，请先核对任务记录。"
+    : "请核对供应商状态与任务记录。";
+  throw new BrowserDirectError(`${diagnostics.stage}：${reason}（HTTP ${response.status}）。${advice}不会自动重试付费请求。${requestId ? ` 请求编号：${requestId}。` : ""}`, "http", response.status, diagnostics.stage);
+}
+async function json(response: Response, diagnostics: DirectDiagnostics, limit = MAX_JSON_BYTES): Promise<JsonObject> {
+  await requireOk(response, diagnostics);
   const buffer = await bytes(response, limit);
   try { return object(JSON.parse(new TextDecoder().decode(buffer))); }
   catch { return fail("供应商返回的内容不是有效 JSON；请核对直连地址与接口协议。", "response"); }
@@ -172,17 +206,19 @@ function textContent(payload: JsonObject) {
 
 export async function fetchDirectModels(providerInput: BrowserDirectProvider, options: DirectRequestOptions = {}): Promise<string[]> {
   const provider = validatedProvider(providerInput);
+  const diagnostics: DirectDiagnostics = { stage: "模型列表", apiKey: provider.apiKey };
   return request(options, 25_000, async (signal) => {
     await authorize(options, signal);
     const native = provider.type === "apiyi" || provider.type === "geekai";
-    const payload = await json(await directFetch(apiUrl(provider, "models", native), signal, { headers: native ? { "x-goog-api-key": provider.apiKey } : { Authorization: `Bearer ${provider.apiKey}` } }), 2 * MIB);
+    const payload = await json(await directFetch(apiUrl(provider, "models", native), signal, { headers: native ? { "x-goog-api-key": provider.apiKey } : { Authorization: `Bearer ${provider.apiKey}` } }), diagnostics, 2 * MIB);
     const models = [...new Set([...array(payload.data), ...array(payload.models)].map((value) => (string(object(value).id) || string(object(value).name)).replace(/^models\//, "").trim()).filter((value) => value && value.length <= 180))].sort().slice(0, 1000);
     if (!models.length) fail("供应商未返回模型列表，请核对接口地址或手动填写模型 ID。");
     return models;
-  });
+  }, diagnostics);
 }
 export async function directText(input: DirectTextInput): Promise<{ text: string; model: string; provider: string }> {
   const provider = validatedProvider(input.provider);
+  const diagnostics: DirectDiagnostics = { stage: "文字分析", apiKey: provider.apiKey, privateText: [input.userPrompt, input.systemPrompt] };
   const model = modelId(provider.textModel);
   const images = references(input.images);
   if (input.maxTokens !== undefined && (!Number.isInteger(input.maxTokens) || input.maxTokens < 1 || input.maxTokens > 8192)) fail("文字输出长度设置无效。", "configuration");
@@ -194,11 +230,11 @@ export async function directText(input: DirectTextInput): Promise<{ text: string
       body: JSON.stringify(native
         ? { ...(input.systemPrompt ? { system_instruction: { parts: [{ text: input.systemPrompt }] } } : {}), contents: [{ role: "user", parts: [{ text: input.userPrompt }, ...images.map((image) => ({ inlineData: image }))] }], generationConfig: { temperature: 0.2, ...(input.maxTokens ? { maxOutputTokens: input.maxTokens } : {}) } }
         : { model, messages: [{ role: "system", content: input.systemPrompt }, { role: "user", content: [{ type: "text", text: input.userPrompt }, ...imageParts(images)] }], temperature: 0.2, stream: false, ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}) }),
-    }), 8 * MIB);
+    }), diagnostics, 8 * MIB);
     const text = textContent(payload);
     if (!text) fail("供应商没有返回文字内容；请核对所选文字模型。");
     return { text, model, provider: name(provider) };
-  });
+  }, diagnostics);
 }
 
 type ImageReference = { value: string; mimeType?: string; base64?: boolean; prompt?: string };
@@ -220,6 +256,8 @@ function responseImage(payload: JsonObject): ImageReference | undefined {
     const value = object(part), inline = object(value.inlineData || value.inline_data);
     const data = string(inline.data);
     if (data) return { value: data, mimeType: string(inline.mimeType || inline.mime_type) || "image/png", base64: true };
+    const fileUri = string(object(value.fileData || value.file_data).fileUri || object(value.fileData || value.file_data).file_uri);
+    if (/^https:\/\//i.test(fileUri)) return { value: fileUri };
     const imageUrl = typeof value.image_url === "string" ? value.image_url : string(object(value.image_url).url);
     if (imageUrl || string(value.url)) return { value: imageUrl || string(value.url) };
     if (string(value.text)) texts.push(string(value.text));
@@ -231,7 +269,7 @@ function responseImage(payload: JsonObject): ImageReference | undefined {
     if (data || markdown || url) return { value: data || markdown || url! };
   }
 }
-async function downloadImage(reference: ImageReference, provider: BrowserDirectProvider, signal: AbortSignal): Promise<DirectImage> {
+async function downloadImage(reference: ImageReference, provider: BrowserDirectProvider, signal: AbortSignal, diagnostics: DirectDiagnostics): Promise<DirectImage> {
   if (reference.base64) return { blob: new Blob([base64Bytes(reference.value, reference.mimeType || "image/png")], { type: reference.mimeType || "image/png" }), prompt: reference.prompt };
   const inline = reference.value.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/i);
   if (inline) return { blob: new Blob([base64Bytes(inline[2], inline[1].toLowerCase())], { type: inline[1].toLowerCase() }), prompt: reference.prompt };
@@ -239,8 +277,12 @@ async function downloadImage(reference: ImageReference, provider: BrowserDirectP
   if (provider.apiKey.length >= 4 && (url.toString().includes(provider.apiKey) || url.toString().includes(encodeURIComponent(provider.apiKey)))) fail("供应商返回的图片地址包含模型密钥，已拒绝下载以保护密钥。", "image");
   // Image CDN requests are deliberately separate: no Authorization, cookies,
   // supplier workspace header or referrer is copied to a returned URL.
+  let decodedPath = url.pathname;
+  try { decodedPath = decodeURIComponent(url.pathname); } catch { /* Keep the raw path when percent encoding is malformed. */ }
+  diagnostics.privateText = [...(diagnostics.privateText || []), url.href, decodedPath, ...url.searchParams.values()];
+  diagnostics.stage = "图片下载";
   const response = await directFetch(url.toString(), signal);
-  await requireOk(response);
+  await requireOk(response, diagnostics);
   const mimeType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
   if (!IMAGE_TYPES.has(mimeType)) { await response.body?.cancel(); return fail("供应商图片下载未返回可用图片类型，无法保存；请核对供应商的浏览器直连支持。", "image"); }
   const data = await bytes(response, MAX_IMAGE_BYTES);
@@ -249,7 +291,8 @@ async function downloadImage(reference: ImageReference, provider: BrowserDirectP
 }
 function nativeGemini(provider: BrowserDirectProvider, model: string) {
   return provider.type === "geekai" && /^gemini-.*(?:image|nano-banana)/i.test(model)
-    || provider.type === "apiyi" && /^gemini-(?:3\.1-flash-image(?:-preview)?|3-pro-image(?:-preview)?|nano-banana-2\.1)$/i.test(model);
+    || provider.type === "apiyi" && /^gemini-(?:3\.1-flash-image(?:-preview)?|3-pro-image(?:-preview)?|nano-banana-2\.1)$/i.test(model)
+    || provider.type === "relayrouter" && isRelayRouterGeminiImageModel(model);
 }
 function imageSize(model: string, ratio: string, standard: boolean) {
   if (ratio === "1:1") return "1024x1024";
@@ -261,7 +304,7 @@ function imageSize(model: string, ratio: string, standard: boolean) {
 async function generateOne(input: DirectImagesInput, provider: BrowserDirectProvider, images: DirectImageInput[], model: string, index: number, count: number) {
   const aiHubGemini = provider.type === "aihubmix" && /^gemini-.*(?:image|nano-banana)/i.test(model);
   const native = nativeGemini(provider, model);
-  const standardImages = provider.type === "aihubmix" || provider.type === "openai-compatible";
+  const standardImages = provider.type === "aihubmix" || provider.type === "relayrouter" || provider.type === "openai-compatible";
   const edit = !native && !aiHubGemini && standardImages && images.length > 0;
   const ratio = ["1:1", "4:3", "3:4", "16:9", "9:16"].includes(input.aspectRatio || "") ? input.aspectRatio! : "4:3";
   const resolution = input.resolution === "2K" || input.resolution === "4K" ? input.resolution : "1K";
@@ -270,16 +313,19 @@ async function generateOne(input: DirectImagesInput, provider: BrowserDirectProv
   const userPrompt = input.promptForIndex ? input.promptForIndex(index) : input.userPrompt;
   if (typeof userPrompt !== "string" || !userPrompt.trim()) fail("本张图片的设计要求无效，未发起该次生成。", "configuration");
   const prompt = [input.systemPrompt, userPrompt, count > 1 ? `本次输出批次第 ${index + 1}/${count} 张图片，只生成本次这一张。` : ""].filter(Boolean).join("\n\n");
+  const diagnostics: DirectDiagnostics = { stage: "图片生成", apiKey: provider.apiKey, privateText: [userPrompt, input.systemPrompt] };
   const headers: Record<string, string> = { Authorization: `Bearer ${provider.apiKey}` };
   let endpoint: string, body: BodyInit;
   if (native) {
     endpoint = apiUrl(provider, `models/${encodeURIComponent(model)}:generateContent`, true);
     // These relays document x-goog-api-key on their native Gemini endpoint. Do
     // not add Bearer there: Authorization needs an explicit CORS allow-list.
-    delete headers.Authorization;
-    headers["x-goog-api-key"] = provider.apiKey;
+    if (provider.type !== "relayrouter") {
+      delete headers.Authorization;
+      headers["x-goog-api-key"] = provider.apiKey;
+    }
     headers["Content-Type"] = "application/json";
-    body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, ...images.map((image) => ({ inlineData: image }))] }], generationConfig: { responseModalities: ["TEXT", "IMAGE"], maxOutputTokens: 4096, imageConfig: { ...(input.aspectRatio === "auto" ? {} : { aspectRatio: ratio }), imageSize: resolution } } });
+    body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, ...images.map((image) => provider.type === "relayrouter" ? { inline_data: { mime_type: image.mimeType, data: image.data } } : { inlineData: image })] }], generationConfig: { responseModalities: ["TEXT", "IMAGE"], maxOutputTokens: 4096, imageConfig: { ...(input.aspectRatio === "auto" ? {} : { aspectRatio: ratio }), imageSize: provider.type === "relayrouter" && /^gemini-(?:2\.5-|3\.1-flash-lite-image$)/i.test(model) ? "1K" : resolution } } });
   } else if (aiHubGemini) {
     endpoint = apiUrl(provider, "chat/completions");
     headers["Content-Type"] = "application/json";
@@ -299,17 +345,20 @@ async function generateOne(input: DirectImagesInput, provider: BrowserDirectProv
     headers["Content-Type"] = "application/json";
     body = JSON.stringify({ model, prompt, n: 1, size: imageSize(model, ratio, standardImages), ...(standardImages ? /^gpt-image-/i.test(model) ? { output_format: "png" } : {} : { async: false, ...(images.length ? { image: images.map((image) => image.data) } : {}) }) });
   }
-  return request(input, provider.type === "aihubmix" && /^gpt-image-/i.test(model) ? 600_000 : 180_000, async (signal) => {
+  return request(input, (provider.type === "aihubmix" || provider.type === "relayrouter") && /^gpt-image-/i.test(model) ? 600_000 : 180_000, async (signal) => {
     await authorize(input, signal);
-    const payload = await json(await directFetch(endpoint, signal, { method: "POST", headers, body }));
+    const payload = await json(await directFetch(endpoint, signal, { method: "POST", headers, body }), diagnostics);
     const reference = responseImage(payload);
     if (!reference) fail("供应商未返回图片。请先核对供应商任务记录和扣费情况，不要直接重试付费请求。");
-    return downloadImage(reference, provider, signal);
-  });
+    return downloadImage(reference, provider, signal, diagnostics);
+  }, diagnostics);
 }
 export async function directImages(input: DirectImagesInput): Promise<DirectImagesOutput> {
   const provider = validatedProvider(input.provider);
   const model = modelId(provider.imageModel);
+  if (provider.type === "relayrouter" && !isRelayRouterImageModel(model)) {
+    fail("RelayRouter 当前仅开放已适配的 Gemini 图片、GPT Image 2 与 2.5 型号；本次未发起付费请求。", "configuration");
+  }
   const images = references(input.images, 9);
   throwIfAborted(input.signal);
   if (!Number.isFinite(input.count) || Math.trunc(input.count) !== input.count || input.count < 1 || input.count > 100) fail("生成数量必须是 1 到 100 的整数。", "configuration");

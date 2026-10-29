@@ -33,6 +33,7 @@ export function multiViewBoardLabel(content: string, fallback = 6) {
 
 export function isSurfaceEditingTask(input: { content: string; agentId?: string; generationMode?: string; hasProductImage: boolean; surfaceOnly?: boolean; workflowKind?: string }) {
   if (!input.hasProductImage || input.generationMode === "text" || input.generationMode === "reference") return false;
+  if (input.workflowKind === "packaging" || input.workflowKind === "detail") return false;
   if (input.workflowKind === "shape") return false;
   if (input.workflowKind === "cmf" || input.workflowKind === "decal") return true;
   return input.surfaceOnly === true || input.agentId === "cmf-colorways" || detectNaturalDesignIntent(input.content) === "surface-only";
@@ -128,7 +129,7 @@ export function explicitImageCount(content: string) {
   const number = "([0-9]{1,3}|[零〇一二两三四五六七八九十百]+)";
   const counter = "(?:张|个|套|款|幅|组|种)";
   const modifiers = "(?:(?:全新(?:的)?|新(?:的)?|不同(?:的)?|明显不同(?:的)?|差异(?:明显|化)?(?:的)?|独立(?:的)?|各不相同(?:的)?|多样(?:化)?(?:的)?|创新(?:的)?|创意(?:的)?|产品|使用)\\s*){0,6}";
-  const target = "(?:外观(?:方案|设计|改款|变款)?|设计方案|场景(?:图|效果图)?|图片|图像|效果图|方案|变款|款式(?:造型|方案)?|造型方案|角度(?:视图)?|视图)";
+  const target = "(?:外观(?:方案|设计|改款|变款)?|包装(?:设计|方案|效果图)?|设计方案|场景(?:图|效果图)?|图片|图像|效果图|方案|变款|款式(?:造型|方案)?|造型方案|角度(?:视图)?|视图)";
   const actionPattern = new RegExp(`(?:批量\\s*)?(?:生成|出图|出|做|创建|制作|产出|给我|需要|要)\\s*(?:至少|一共|共)?\\s*${number}\\s*${counter}?\\s*${modifiers}${target}`, "i");
   const directPattern = new RegExp(`${number}\\s*${counter}\\s*${modifiers}${target}`, "i");
   const match = content.match(actionPattern) || content.match(directPattern);
@@ -171,7 +172,11 @@ export function detectNaturalDesignIntent(value: string): NaturalDesignIntent {
     .replace(/(?:造型|轮廓|结构|外形|体块)[^，,。；;]{0,4}(?:不(?:要|能|可以|需要|允许)?|禁止|无需|不得|严禁)[^，,。；;]{0,4}(?:重新设计|重塑|改变|改动|调整|更换|修改)/g, "");
   const geometryChange = /从零|全新产品|新款产品|(?:重新设计|重塑|改变|改动|调整|更换|修改).{0,5}(?:造型|轮廓|结构|外形|体块)|(?:造型|轮廓|结构|外形|体块).{0,5}(?:重新设计|重塑|改变|改动|调整|修改)/.test(geometryText);
   const viewRequestText = text.replace(/(?:保持|保留|沿用|维持)[^，,。；;]{0,12}(?:多角度|不同角度|[六八68]视[图角]|五视图|三视图|四视图|[左右]前?45[°度]?(?:视图)?|正视|侧视|背面|后视|俯视|仰视|视图布局)/g, "").replace(/(?:不|不要|禁止)[^，,。；;]{0,4}(?:改|动|换|生成|新增)[^，,。；;]{0,6}(?:角度|视角|视图)/g, "");
-  const requestsNewViews = (requestsSeparateViews(viewRequestText) && /角度|视角|视图|正视|后视|左视|右视|顶视|底视/.test(viewRequestText)) || /(?:生成|新增|制作|输出|换|改成|做)[^，,。；;]{0,8}(?:多角度|不同角度|[六八68]视[图角]|五视图|四视图|三视图|正视|侧视|背面|后视|俯视|仰视|[左右]前?45[°度]?|环绕视角)/.test(viewRequestText);
+  const requestsNewViews = (requestsSeparateViews(viewRequestText) && /角度|视角|视图|正视|后视|左视|右视|顶视|底视/.test(viewRequestText))
+    || /(?:生成|新增|制作|输出|换|改成|做)[^，,。；;]{0,8}(?:多角度|不同角度|[六八68]视[图角]|五视图|四视图|三视图|正视|侧视|背面|后视|俯视|仰视|[左右]前?45[°度]?|环绕视角)/.test(viewRequestText)
+    // The six-view shortcut spells out canvas ratio, resolution and grid before
+    // naming the requested board. Those rendering details are not surface edits.
+    || /(?:生成|制作|输出)[^。；;]{0,80}(?:[六八68]视[图角]|[三四五]视图)(?:整版)?/.test(viewRequestText);
   if (surface && !requestsNewViews && !geometryChange) return "surface-only";
   if (requestsNewViews) return "multi-view";
   const withoutLockedViews = viewRequestText;

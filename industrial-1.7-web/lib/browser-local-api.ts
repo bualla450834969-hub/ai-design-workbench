@@ -16,6 +16,8 @@ import { browserLocalAttachmentIssue } from "@/lib/browser-local-attachments";
 import { rememberBrowserImageBlob, forgetBrowserImageBlob } from "@/lib/browser-image-save";
 import type { DesignPlan } from "@/lib/providers/types";
 import type { AgentId, Asset, GenerationJob, GenerationResult, Message, Project, UserSession } from "@/types/domain";
+import { isPackagingWorkflow, PACKAGING_CONTRACT, packagingBoardContract, validatePackagingAssets } from "@/lib/packaging-design";
+import { detailOutputAspectRatio, isDetailWorkflow, validateDetailAssets } from "@/lib/detail-images";
 
 type LocalContext = { user: UserSession; store: BrowserWorkspaceStore; lifecycle: AbortController };
 type Json = Record<string, unknown>;
@@ -249,8 +251,16 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
     const beforeRequest = async () => { if (controller.signal.aborted || session.lifecycle.signal.aborted) throw new DOMException("已取消", "AbortError"); await checkBrowserAuthorization(session.user.id); };
     await patchJob(session, job.id, { status: "running", progress: 5, stage: "planning", stageLabel: "正在本机准备，直接连接你的模型供应商" });
     const project = projectOf((await session.store.getState()).projects, job.projectId);
-    const settings = { ...(body.settings as Record<string, string | number | boolean> || {}) };
+    const settings: Record<string, string | number | boolean> = { ...(body.settings as Record<string, string | number | boolean> || {}), ...(free && typeof body.showDimensions === "boolean" ? { showDimensions: body.showDimensions } : {}) };
     const assets = job.inputAssets;
+    if (!free && isPackagingWorkflow(settings.workflowKind)) {
+      if (job.agentId !== "appearance-variants") error("包装设计请选择外观方案工作流；本次尚未调用模型。");
+      validatePackagingAssets(assets, settings.generationMode || "source");
+    }
+    if (!free && isDetailWorkflow(settings.workflowKind)) {
+      if (job.agentId !== "appearance-variants") error("产品详情图请选择外观方案工作流；本次尚未调用模型。");
+      validateDetailAssets(assets, settings.generationMode || "source");
+    }
     const images = await imageInputs(session, assets);
     let content = job.prompt;
     let agentId = job.agentId;
@@ -289,7 +299,7 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
       changed(job.id); return;
     }
     settings.resolution = free ? String(body.resolution || "1K") : String(settings.resolution || "1K");
-    settings.aspectRatio = free ? String(body.aspectRatio || "auto") : String(settings.aspectRatio || "auto");
+    settings.aspectRatio = free ? String(body.aspectRatio || "auto") : detailOutputAspectRatio(settings.workflowKind, settings.designDirection, settings.aspectRatio);
     settings.boardItems = normalizeBoardItemCount(free ? body.boardItems : settings.boardItems);
     settings.outputCount = Math.max(1, Math.min(100, count));
     const promptInput = { project, content, assets, agentId, settings };
@@ -309,7 +319,12 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
     const imagePrompt = buildBrowserImagePrompt({ ...promptInput, designPlan, count });
     await patchJob(session, job.id, { stage: "generating", progress: 15, totalOutputs: count, completedOutputs: 0, stageLabel: `正在直连生成 0/${count} 张` });
     const saved: Asset[] = [];
-    const output = await directImages({ provider, beforeRequest, signal: controller.signal, images: finalImages, systemPrompt: getAgent(agentId).systemPrompt, userPrompt: imagePrompt, promptForIndex: (index) => buildBrowserImagePrompt({ ...promptInput, designPlan, count, index }), count, resolution: String(settings.resolution) as "1K" | "2K" | "4K", aspectRatio: String(settings.aspectRatio), onImage: async (image) => {
+    const imageSystemPrompt = isPackagingWorkflow(settings.workflowKind)
+      ? `你是包装设计图像生成助手。${PACKAGING_CONTRACT}${packagingBoardContract(settings.boardItems)}`
+      : isDetailWorkflow(settings.workflowKind)
+      ? "你是产品详情图生成助手。严格执行本轮用户任务、图像合同和素材角色；每次只输出一张完整展示图。"
+      : getAgent(agentId).systemPrompt;
+    const output = await directImages({ provider, beforeRequest, signal: controller.signal, images: finalImages, systemPrompt: imageSystemPrompt, userPrompt: imagePrompt, promptForIndex: (index) => buildBrowserImagePrompt({ ...promptInput, designPlan, count, index }), count, resolution: String(settings.resolution) as "1K" | "2K" | "4K", aspectRatio: String(settings.aspectRatio), onImage: async (image) => {
       if (controller.signal.aborted) throw new DOMException("已取消", "AbortError");
       const state = await session.store.getState();
       const sequence = state.assets.filter((asset) => asset.projectId === job.projectId && (asset.origin === "generated" || asset.role === "result")).length + 1;
@@ -318,9 +333,9 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
       await patchJob(session, job.id, { completedOutputs: saved.length, progress: Math.round(15 + 80 * saved.length / count), stageLabel: `已生成并保存到本机 ${saved.length}/${count} 张` });
     } });
     const result: GenerationResult = { jobId: job.id, status: "succeeded", provider: output.provider, model: output.model, prompt: imagePrompt, imageUrls: saved.map((asset) => asset.url), imageAssets: saved, requestedCount: count, deliveredCount: saved.length, savedCount: saved.length,
-      requestSnapshot: free ? { endpoint: "/api/free-chat", content: job.prompt, assetIds: job.selectedAssetIds || assets.map((asset) => asset.id), resolution: String(settings.resolution) as "1K" | "2K" | "4K", aspectRatio: String(settings.aspectRatio) as "auto", boardItems: Number(settings.boardItems) } : { endpoint: "/api/messages", content: job.prompt, agentId: job.agentId, assetIds: assets.map((asset) => asset.id), settings },
+      requestSnapshot: free ? { endpoint: "/api/free-chat", content: job.prompt, assetIds: job.selectedAssetIds || assets.map((asset) => asset.id), resolution: String(settings.resolution) as "1K" | "2K" | "4K", aspectRatio: String(settings.aspectRatio) as "auto", boardItems: Number(settings.boardItems), showDimensions: typeof body.showDimensions === "boolean" ? body.showDimensions : undefined } : { endpoint: "/api/messages", content: job.prompt, agentId: job.agentId, assetIds: assets.map((asset) => asset.id), settings },
       startedAt: job.createdAt, completedAt: now(), note: output.failureSummary,
-      settingsSnapshot: { agentId: job.agentId, workflowKind: String(settings.workflowKind || "shape") as "shape", direction: String(settings.designDirection || "造型焕新"), reconstructionRatio: Number(settings.reconstructionRatio || 0), resolution: String(settings.resolution) as "1K" | "2K" | "4K", outputCount: count, boardItems: Number(settings.boardItems), generationMode: String(settings.generationMode || "text") as "text", aspectRatio: String(settings.aspectRatio) as "auto", sourceAssetIds: assets.filter((asset) => asset.role === "structure").map((asset) => asset.id), referenceAssetIds: assets.filter((asset) => asset.role === "style").map((asset) => asset.id) },
+      settingsSnapshot: { agentId: job.agentId, workflowKind: String(settings.workflowKind || "shape") as "shape", direction: String(settings.designDirection || "造型焕新"), showDimensions: settings.multiViewBoard || (free && typeof body.showDimensions === "boolean") ? settings.showDimensions !== false : undefined, reconstructionRatio: Number(settings.reconstructionRatio || 0), resolution: String(settings.resolution) as "1K" | "2K" | "4K", outputCount: count, boardItems: Number(settings.boardItems), generationMode: String(settings.generationMode || "text") as "text", aspectRatio: String(settings.aspectRatio) as "auto", sourceAssetIds: assets.filter((asset) => asset.role === "structure").map((asset) => asset.id), referenceAssetIds: assets.filter((asset) => asset.role === "style").map((asset) => asset.id) },
     };
     await session.store.update((state) => {
       const current = state.jobs.find((item) => item.id === job.id) || error("任务不存在");
@@ -425,6 +440,14 @@ async function localApi(session: LocalContext, path: string, url: URL, method: s
   if (jobPath && method === "DELETE") { const id = decodeURIComponent(jobPath[1]); if (!state.jobs.some((job) => job.id === id)) error("任务不存在", 404); controllers.get(id)?.abort(); await patchJob(session, id, { status: "cancelled", error: "已取消；已发送的供应商请求可能已计费，请核对账单。" }); return respond({ job: (await session.store.getState()).jobs.find((job) => job.id === id) }); }
   if (["/api/prompt-enhance", "/api/free-chat/enhance"].includes(path) && method === "POST") {
     const body = readBody(); const project = projectOf(state.projects, text(body.projectId, "项目编号", 512)); const ids = list(body.assetIds || []); const free = path.includes("free-chat"); const assets = selectedLocalAssets(state.assets, project.id, ids, free); const provider = await activeLocalProvider(session.store);
+    if (!free && isPackagingWorkflow(body.workflowKind)) {
+      if (body.agentId !== "appearance-variants") error("包装设计请选择外观方案工作流；本次尚未调用模型。");
+      validatePackagingAssets(assets, body.generationMode);
+    }
+    if (!free && isDetailWorkflow(body.workflowKind)) {
+      if (body.agentId !== "appearance-variants") error("产品详情图请选择外观方案工作流；本次尚未调用模型。");
+      validateDetailAssets(assets, body.generationMode);
+    }
     const input = { project, content: String(free ? body.content : body.draft || ""), draft: String(free ? body.content : body.draft || ""), assets, agentId: String(body.agentId || "appearance-variants") as AgentId, settings: { ...body, userRequirements: String(body.draft || body.content || "") } as Record<string, string | number | boolean> };
     const messages = browserEnhancementMessages(input); const result = await directText({ provider, images: await imageInputs(session, assets), ...messages, beforeRequest: async () => { await checkBrowserAuthorization(session.user.id); }, signal: init.signal || undefined });
     return json({ ...parseBrowserDesignPlan(result.text, project.name, Number(body.outputCount) || 1), provider: result.provider, model: result.model });
@@ -434,7 +457,18 @@ async function localApi(session: LocalContext, path: string, url: URL, method: s
     const prompt = text(body.content, "生成要求"); const ids = list(body.assetIds || []); const free = path === "/api/free-chat"; const assets = selectedLocalAssets(state.assets, projectId, ids, free);
     const agentId = String(free ? "free-chat" : body.agentId || "appearance-variants") as AgentId;
     if (!free && !agents.some((agent) => agent.id === agentId)) error("设计模式无效");
-    if (!free) { const settings = body.settings as Record<string, string | number | boolean> || {}; const issue = parameterAssetError(assets, String(settings.generationMode || "text")); if (issue) error(issue); }
+    if (!free) {
+      const settings = body.settings as Record<string, string | number | boolean> || {};
+      const issue = parameterAssetError(assets, String(settings.generationMode || "text")); if (issue) error(issue);
+      if (isPackagingWorkflow(settings.workflowKind)) {
+        if (agentId !== "appearance-variants") error("包装设计请选择外观方案工作流；本次尚未创建任务。");
+        validatePackagingAssets(assets, settings.generationMode);
+      }
+      if (isDetailWorkflow(settings.workflowKind)) {
+        if (agentId !== "appearance-variants") error("产品详情图请选择外观方案工作流；本次尚未创建任务。");
+        validateDetailAssets(assets, settings.generationMode);
+      }
+    }
     const idempotencyKey = text(body.idempotencyKey, "任务标识", 100);
     const existing = state.jobs.find((job) => job.idempotencyKey === idempotencyKey); if (existing) return respond({ job: existing, created: false });
     if (running.size >= 2) error("本机已有两个生成任务，请等待其中一个完成再提交；其他用户不受影响。", 429);

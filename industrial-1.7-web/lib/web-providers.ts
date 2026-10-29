@@ -10,7 +10,7 @@ import { assertWebGenerationLicense, requireWebLicenseBinding } from "@/lib/web-
 
 const draftSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9-]{1,80}$/), name: z.string().trim().min(1).max(60),
-  type: z.enum(["geekai", "apiyi", "aihubmix", "openai-compatible"]), baseUrl: z.string().trim().min(1).max(500),
+  type: z.enum(["geekai", "apiyi", "aihubmix", "relayrouter", "openai-compatible"]), baseUrl: z.string().trim().min(1).max(500),
   textModel: z.string().trim().min(1).max(160), imageModel: z.string().trim().min(1).max(160),
   workspaceId: z.string().trim().max(160).default(""), modelCatalog: z.array(z.string().trim().max(180)).max(1000).default([]),
   enabled: z.boolean().default(true), apiKey: z.string().trim().max(800).optional(),

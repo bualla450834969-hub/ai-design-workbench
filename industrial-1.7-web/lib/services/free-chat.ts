@@ -254,7 +254,7 @@ export async function enhanceFreeChatPrompt(input: { userId: string; projectId: 
   return { prompt, provider: output.provider, model: output.model };
 }
 
-export async function runFreeChatJob(input: { userId: string; projectId: string; content: string; assets: Asset[]; selectedAssetIds: string[]; idempotencyKey: string; jobId?: string; resolution?: FreeChatPlan["resolution"]; aspectRatio?: FreeChatPlan["aspectRatio"]; boardItems?: number }) {
+export async function runFreeChatJob(input: { userId: string; projectId: string; content: string; assets: Asset[]; selectedAssetIds: string[]; idempotencyKey: string; jobId?: string; resolution?: FreeChatPlan["resolution"]; aspectRatio?: FreeChatPlan["aspectRatio"]; boardItems?: number; showDimensions?: boolean }) {
   input = { ...input, content: stripGeneratedPromptBoilerplate(input.content) };
   const logicalOrderAssets = input.assets;
   const attachmentManifest = assetManifest(logicalOrderAssets);
@@ -318,7 +318,7 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
     ].filter(Boolean).join("\n\n");
     const imageContext: ProviderContext = {
       ...baseContext, signal, userPrompt: prompt, designPlan,
-      settings: { outputCount: plan.count, boardItems: plan.boardItems, resolution: plan.resolution, aspectRatio: plan.aspectRatio, generationMode: "free-chat", userRequirements: input.content, surfaceOnly: plan.action === "cmf", freeChatAction: plan.action, freeChatViews: plan.views.join("|"), freeChatViewCount: requestedStandardViewCount(input.content, plan.count), freeChatMultiViewBoard: plan.action === "multi-view" && plan.count === 1 && plan.views.some((view) => /整版/.test(view)), freeChatBoardItems: plan.boardItems, freeChatBoardKind: plan.action === "cmf" ? "cmf" : plan.boardItems > 1 ? "variants" : "single" },
+      settings: { outputCount: plan.count, boardItems: plan.boardItems, resolution: plan.resolution, aspectRatio: plan.aspectRatio, generationMode: "free-chat", userRequirements: input.content, surfaceOnly: plan.action === "cmf", freeChatAction: plan.action, freeChatViews: plan.views.join("|"), freeChatViewCount: requestedStandardViewCount(input.content, plan.count), freeChatMultiViewBoard: plan.action === "multi-view" && plan.count === 1 && plan.views.some((view) => /整版/.test(view)), ...(input.showDimensions !== undefined ? { showDimensions: input.showDimensions } : {}), freeChatBoardItems: plan.boardItems, freeChatBoardKind: plan.action === "cmf" ? "cmf" : plan.boardItems > 1 ? "variants" : "single" },
       onProgress: (event) => {
         completed = event.completed ?? completed;
         store.updateJob(job.id, { progress: Math.min(88, 24 + Math.round(62 * completed / Math.max(1, plan.count))), stage: event.stage, stageLabel: event.label, completedOutputs: completed, totalOutputs: plan.count });
@@ -341,13 +341,13 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
     if (persisted.errors.length) notes.push(`${persisted.errors.length} 张${process.env.WEB_MODE === "true" ? "服务器" : "本地"}保存失败，供应商原始结果仍可查看`);
     if (persisted.unchangedCount) notes.push(`${persisted.unchangedCount} 张与上传原图高度相似，已标记供检查；不会自动再次扣费生图`);
     const result: GenerationResult = {
-      requestSnapshot: { endpoint: "/api/free-chat", content: input.content, assetIds: input.selectedAssetIds, resolution: input.resolution, aspectRatio: input.aspectRatio, boardItems: normalizeNaturalBoardItemCount(plan.boardItems) },
+      requestSnapshot: { endpoint: "/api/free-chat", content: input.content, assetIds: input.selectedAssetIds, resolution: input.resolution, aspectRatio: input.aspectRatio, boardItems: normalizeNaturalBoardItemCount(plan.boardItems), showDimensions: input.showDimensions },
       jobId: job.id, status: "succeeded", imageUrls: persisted.imageUrls, imageAssets: persisted.assets,
       provider: image.provider, model: image.model, prompt: image.revisedPrompt || prompt, note: notes.length ? notes.join("；") : undefined,
       direction: `自由对话 · ${plan.action}`, requestedCount: plan.count, deliveredCount: image.imageUrls.length, savedCount: persisted.savedCount,
       startedAt: job.createdAt, completedAt, durationMs: Date.parse(completedAt) - Date.parse(job.createdAt),
       billingEstimate: { textModel, imageModel: image.model, textCost: billing.text, imageUnitCost: billing.imageUnit, baseImageUnitCost: billing.baseImageUnit, textAnalysisCalls: 1, imageCost: billing.image, totalCost: billing.total, currency: "CNY" },
-      settingsSnapshot: { reconstructionRatio: 0, direction: "自由对话", resolution: plan.resolution, aspectRatio: plan.aspectRatio, outputCount: plan.count, boardItems: normalizeNaturalBoardItemCount(plan.boardItems), generationMode: input.assets.some((asset) => asset.type.startsWith("image/")) ? "source" : "text", sourceAssetIds: input.assets.filter((asset) => asset.type.startsWith("image/")).map((asset) => asset.id), referenceAssetIds: [] },
+      settingsSnapshot: { reconstructionRatio: 0, direction: "自由对话", resolution: plan.resolution, aspectRatio: plan.aspectRatio, outputCount: plan.count, boardItems: normalizeNaturalBoardItemCount(plan.boardItems), showDimensions: input.showDimensions, generationMode: input.assets.some((asset) => asset.type.startsWith("image/")) ? "source" : "text", sourceAssetIds: input.assets.filter((asset) => asset.type.startsWith("image/")).map((asset) => asset.id), referenceAssetIds: [] },
       designAnalysis: plan.instructions,
       variants: image.variants?.map((variant, index) => ({ index, assetId: persisted.assets[index]?.id, designRoute: variant.designRoute, prompt: variant.prompt, seed: variant.seed })),
     };

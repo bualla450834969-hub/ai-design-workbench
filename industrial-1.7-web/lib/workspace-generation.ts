@@ -1,11 +1,12 @@
 import type { AgentId, Asset, AssetRole, Message } from "@/types/domain";
 import { appPath } from "@/lib/app-path";
+import { sixViewDimensionContract, sixViewSourceFidelityContract } from "@/lib/dimension-annotations";
 
 type GenerationAssetSnapshot = Pick<Asset, "id" | "role" | "sha256" | "annotationData"> & { tags: string[] };
 
 export type GenerationRetry = {
   endpoint: "/api/messages" | "/api/free-chat";
-  payload: { projectId: string; content: string; assetIds: string[]; agentId?: AgentId; resolution?: "1K" | "2K" | "4K"; aspectRatio?: "auto" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16"; boardItems?: number; settings?: Record<string, string | number | boolean> };
+  payload: { projectId: string; content: string; assetIds: string[]; agentId?: AgentId; resolution?: "1K" | "2K" | "4K"; aspectRatio?: "auto" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16"; boardItems?: number; showDimensions?: boolean; settings?: Record<string, string | number | boolean> };
   providerId: string;
   textModel: string;
   imageModel: string;
@@ -108,8 +109,11 @@ export function parameterAssetError(assets: Asset[], mode: string) {
   return "";
 }
 
-export function sixViewPrompt() {
-  return "生成六视图。以附件中的产品原图为唯一产品身份依据，生成一张 16:9 横向、4K 分辨率的纯图片 3×2 六视图整版。第一行依次为正视、后视、左侧视，第二行依次为右侧视、俯视、底视。六格各为一个互不重复的标准正交方向，使用相同产品坐标系，左右以产品自身为准；禁止把斜侧视或同一个角度翻转、镜像、微调后充当不同方向。各视图保持同一产品、几何、结构比例、部件数量、配色材质及标识，仅改变观察方向；统一尺度、背景和留白。底面不可见的结构不得凭空臆造。画面不加文字、角度名称、数字、标签、说明或水印。";
+export function sixViewPrompt(showDimensions = true) {
+  const dimensions = showDimensions
+    ? "本轮选择加尺寸：按产品品类和原图比例估算数字，六格相同轴的毫米数值保持一致；所有主要尺寸线都要写可读的 mm 数字，整版只标一次“仅供参考”。"
+    : sixViewDimensionContract("", { showDimensions: false });
+  return `以附件中的产品原图为唯一产品身份依据，生成一张 16:9 横向、4K 分辨率的纯图片 3×2 六视图整版。第一行依次为正视、后视、左侧视，第二行依次为右侧视、俯视、底视。六格各为一个互不重复的标准正交方向，使用相同产品坐标系，左右以产品自身为准；禁止把斜侧视或同一个角度翻转、镜像、微调后充当不同方向。${sixViewSourceFidelityContract()}统一尺度、背景和留白。${dimensions}`;
 }
 
 export function reconstructionControl(mode: string, ratio: number) {

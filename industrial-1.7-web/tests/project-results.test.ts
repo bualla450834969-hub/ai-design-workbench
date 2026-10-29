@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectResultsPanel, projectResultDisplayEntries, projectResultMatchesSearch, type ProjectResultsPanelProps } from "@/components/project-results-panel";
-import { projectResultAssets, resultPixelLabels, resultThumbnailUrl } from "@/lib/project-results";
+import { projectResultAssets, projectResultPreviewAssets, resultPixelLabels, resultThumbnailUrl } from "@/lib/project-results";
 import type { Asset } from "@/types/domain";
 
 function asset(id: string, overrides: Partial<Asset> = {}): Asset {
@@ -23,6 +23,20 @@ describe("project-level result records", () => {
     const favorite = asset("newer", { role: "style", favorite: true });
     expect(projectResultAssets([older, favorite, asset("input", { origin: "user", role: "structure" }), older]).map((item) => item.id)).toEqual(["newer", "older"]);
     expect(projectResultAssets([asset("legacy", { origin: undefined })])).toHaveLength(1);
+  });
+
+  it("previews earlier project results alongside the current chat batch without other projects or input images", () => {
+    const earlier = asset("earlier", { createdAt: "2026-10-08T02:00:00.000Z" });
+    const pending = asset("pending", { createdAt: "2026-10-09T02:00:00.000Z", localSaveError: "正在保存" });
+    const latest = asset("latest", { note: "已保存", createdAt: "2026-10-10T02:00:00.000Z" });
+    const staleLatest = { ...latest, note: "旧备注" };
+    const list = projectResultPreviewAssets(
+      [earlier, latest, asset("other-project", { projectId: "project-b", createdAt: "2026-10-11T02:00:00.000Z" }), asset("source", { origin: "user", role: "structure" })],
+      [pending, staleLatest],
+      "project-a",
+    );
+    expect(list.map((item) => item.id)).toEqual(["earlier", "pending", "latest"]);
+    expect(list[2].note).toBe("已保存");
   });
 
   it("distinguishes native pixels, enlarged exports, historical unknowns, and unsaved results", () => {

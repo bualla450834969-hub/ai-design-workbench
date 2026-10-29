@@ -5,7 +5,7 @@ import { store } from "@/lib/store";
 import { projectStorageLocation } from "@/lib/project-storage-copy";
 import { prepareAssetContext } from "@/lib/services/asset-context";
 import { persistGeneratedImages } from "@/lib/services/result-assets";
-import { detectNaturalDesignIntent, DRAWING_STYLE_REFERENCE_CONSTRAINT, explicitResolution, isSurfaceEditingTask, multiViewBoardLabel, resolveMultiViewBoard, resolveParameterImageCount as resolveImageCount, SURFACE_ONLY_CONSTRAINT } from "@/lib/services/natural-intent";
+import { detectNaturalDesignIntent, DRAWING_STYLE_REFERENCE_CONSTRAINT, explicitResolution, isSurfaceEditingTask, multiViewBoardLabel, requestedStandardViewCount, resolveMultiViewBoard, resolveParameterImageCount as resolveImageCount, SURFACE_ONLY_CONSTRAINT } from "@/lib/services/natural-intent";
 export { explicitImageCount, explicitResolution, resolveParameterImageCount as resolveImageCount } from "@/lib/services/natural-intent";
 import { expandDesignDirection } from "@/lib/services/design-directions";
 import { assetRoleLabel, sortAssetsByRole } from "@/lib/services/asset-roles";
@@ -16,6 +16,9 @@ import { CONCEPT_REDRAW_THRESHOLD, usesAnalysisOnlyFinalImage } from "@/lib/serv
 import { estimateGenerationCost } from "@/lib/model-pricing";
 import { boardPrompt, normalizeBoardItemCount, type BoardKind } from "@/lib/generation-board";
 import { enforceProductIdentityPlan, productIdentityContract, stripGeneratedPromptBoilerplate } from "@/lib/product-identity";
+import { enforcePackagingPlan, isPackagingWorkflow, PACKAGING_CONTRACT, packagingBoardContract, packagingReferenceRules, validatePackagingAssets } from "@/lib/packaging-design";
+import { DETAIL_IMAGE_CONTRACT, detailDirectionContract, detailOutputAspectRatio, detailReferenceRules, detailUserNotes, enforceDetailPlan, isDetailWorkflow, validateDetailAssets } from "@/lib/detail-images";
+import { sixViewSourceFidelityContract } from "@/lib/dimension-annotations";
 import type { DesignPlan, GenerationProgress, ProviderContext } from "@/lib/providers/types";
 import type { AgentId, Asset, GenerationJob, GenerationResult, Message } from "@/types/domain";
 
@@ -101,9 +104,38 @@ export function makePrompt(input: RunInput, documentContext = "", historyContext
   const modeSetting = String(input.settings.generationMode || "source");
   const localMode = modeSetting === "local" || input.agentId === "local-retouch";
   const localWorkflow = localMode ? localWorkflowKind(input.settings.workflowKind) : "shape";
-  const settings = Object.entries(input.settings).filter(([key]) => !key.startsWith("prepared") && !(key === "reconstructionRatio" && modeSetting !== "source" && modeSetting !== "local")).map(([key, value]) => `${key}: ${String(value)}`).join("；");
+  const packaging = isPackagingWorkflow(input.settings.workflowKind);
+  const detail = isDetailWorkflow(input.settings.workflowKind);
+  const settings = Object.entries(input.settings).filter(([key]) => !key.startsWith("prepared") && !(key === "reconstructionRatio" && (packaging || detail || modeSetting !== "source" && modeSetting !== "local"))).map(([key, value]) => `${key}: ${String(value)}`).join("；");
   const assetTag = (asset: Asset) => asset.tags?.length ? `[${asset.tags.join(",")}]` : "";
   const orderedAssets = sortAssetsByRole(input.assets);
+  if (detail) {
+    validateDetailAssets(orderedAssets, modeSetting);
+    const count = Math.max(1, Math.min(100, Math.trunc(Number(input.settings.outputCount) || 1)));
+    const resolution = String(input.settings.resolution || "1K");
+    const ratio = detailOutputAspectRatio(input.settings.workflowKind, input.settings.designDirection, input.settings.aspectRatio);
+    const product = orderedAssets.filter((asset) => asset.type.startsWith("image/") && (asset.role === "structure" || asset.role === "result"));
+    const notes = detailUserNotes(input.content);
+    return [`本轮任务：为首张产品原图中的同一款产品制作「${String(input.settings.designDirection || "产品主图")}」。${notes ? `\n用户补充要求：${notes}` : ""}`,
+      `产品原图：${product.map((asset, index) => `图${index + 1}=${asset.name}`).join("；")}。首张决定产品身份，其他角度仅补充同一产品细节，不继承旧任务的改款要求。`,
+      detailReferenceRules(orderedAssets),
+      `<generation_contract>\n${DETAIL_IMAGE_CONTRACT}\n${detailDirectionContract(input.settings.designDirection)}\n输出${count}张独立展示图，每张为同一款产品，分辨率${resolution}，画幅${ratio}。\n</generation_contract>`,
+      documentContext ? `<uploaded_documents>\n${documentContext}\n</uploaded_documents>` : "",
+    ].filter(Boolean).join("\n\n");
+  }
+  if (packaging) {
+    validatePackagingAssets(orderedAssets, modeSetting);
+    const count = Math.max(1, Math.min(100, Math.trunc(Number(input.settings.outputCount) || 1)));
+    const boardItems = normalizeBoardItemCount(input.settings.boardItems);
+    const resolution = String(input.settings.resolution || "1K");
+    const product = orderedAssets.filter((asset) => asset.type.startsWith("image/") && (asset.role === "structure" || asset.role === "result"));
+    return [input.content, `<project_context>\n${historyContext}\n</project_context>`,
+      `本轮产品原图：${product.map((asset, index) => `图${index + 1}=${asset.name}`).join("；")}。首张决定被包装产品身份与尺度，其余只补充同一产品的结构。`,
+      packagingReferenceRules(orderedAssets),
+      `<generation_contract>\n${PACKAGING_CONTRACT}\n本轮设计方向：${String(input.settings.designDirection || "依据本轮要求设计包装")}。输出${count}张独立图片，目标分辨率${resolution}。${packagingBoardContract(boardItems)}\n${settings ? `界面设置：${settings}` : ""}\n</generation_contract>`,
+      documentContext ? `<uploaded_documents>\n${documentContext}\n</uploaded_documents>` : "",
+    ].filter(Boolean).join("\n\n");
+  }
   const isMultiView = input.agentId === "multi-view";
   const hasAnnotation = orderedAssets.some((asset) => asset.role === "annotation");
   const primaryProductId = orderedAssets.find((asset) => asset.role === "structure" || asset.role === "result")?.id;
@@ -183,7 +215,11 @@ export function makePrompt(input: RunInput, documentContext = "", historyContext
   }
   if (isMultiView) {
     const board = resolveMultiViewBoard(input.content, count, typeof input.settings.multiViewBoard === "boolean" ? input.settings.multiViewBoard : undefined);
-    return [input.content, roles, referenceRules, documents, `<generation_contract>\n本轮是同一已完成产品的视角重建，不是造型重设计；忽略重构幅度和外观方案差异模板。仅依据本轮产品图锁定身份、几何、结构、部件数量、比例和CMF，不继承原图拍摄视角或整板布局。\n${board ? `交付${multiViewBoardLabel(input.content, Number(input.settings.viewCount))}。` : `交付${count}张独立角度图，每次请求只能生成本张指定的唯一视角和一个完整产品，不拼版、不裁切整版、不重复视角。`}目标分辨率${resolution}。无文字、水印或标签。\n</generation_contract>`].filter(Boolean).join("\n\n");
+    const labeledSixView = board && requestedStandardViewCount(input.content, Number(input.settings.viewCount) || 6) === 6;
+    const imageText = labeledSixView
+      ? input.settings.showDimensions === false ? "仅允许六个视角名称，不绘制尺寸线或数字；无说明文字或水印。" : "仅允许六个视角名称及与方向一致的数字尺寸线；无说明文字或水印。"
+      : "无文字、水印或标签。";
+    return [input.content, roles, referenceRules, documents, `<generation_contract>\n本轮是同一已完成产品的视角重建，不是造型重设计；忽略重构幅度和外观方案差异模板。${sixViewSourceFidelityContract()}不继承原图拍摄视角或整板布局。\n${board ? `交付${multiViewBoardLabel(input.content, Number(input.settings.viewCount))}。` : `交付${count}张独立角度图，每次请求只能生成本张指定的唯一视角和一个完整产品，不拼版、不裁切整版、不重复视角。`}目标分辨率${resolution}。${imageText}\n</generation_contract>`].filter(Boolean).join("\n\n");
   }
   const modeContract = generationMode === "text"
     ? "本轮是从零概念设计：没有产品原图和设计参考图。以项目名称与用户文字为产品定义，AI先规划彼此独立的设计路线，再逐张生成；不得假装看过不存在的原图。"
@@ -249,6 +285,13 @@ function designPlanPrompt(plan: Awaited<ReturnType<typeof createDesignPlan>>) {
   return `\n\n<design_analysis>\n以下内容来自本轮全部上传图片的生成前分析，正式生图必须执行：\n产品类别：${plan.productCategory}\n核心功能：${plan.coreFunctions.join("；")}\n必须保留：${plan.mandatoryConstraints.join("；")}\n允许改变：${plan.mutableFeatures.join("；")}\n参考图设计语言：${plan.styleFingerprint.join("；")}\n禁止风格：${plan.negativeStyleConstraints.join("；")}\n本批独立路线：\n${plan.variantDirections.join("\n")}\n</design_analysis>`;
 }
 
+function detailPlanPrompt(plan: Awaited<ReturnType<typeof createDesignPlan>>) {
+  return [
+    plan.productCategory && !plan.productCategory.startsWith("待") ? `已识别产品类别：${plan.productCategory}` : "",
+    plan.coreFunctions.length ? `分析候选要点（须对照原图核实；不能确认就不写）：${plan.coreFunctions.join("；")}` : "",
+  ].filter(Boolean).join("\n");
+}
+
 function preparedDesignPlan(value: unknown, count: number): DesignPlan | undefined {
   if (typeof value !== "string" || value.length > 200_000) return undefined;
   try {
@@ -261,6 +304,18 @@ function preparedDesignPlan(value: unknown, count: number): DesignPlan | undefin
 
 export async function runAgentJob(input: RunInput): Promise<{ job: GenerationJob; message?: Message; created: boolean }> {
   input = { ...input, content: stripGeneratedPromptBoilerplate(input.content) };
+  const packaging = isPackagingWorkflow(input.settings.workflowKind);
+  const detail = isDetailWorkflow(input.settings.workflowKind);
+  if (packaging) {
+    if (input.agentId !== "appearance-variants") throw new Error("包装设计请选择外观方案工作流；本次尚未调用模型。");
+    validatePackagingAssets(input.assets, String(input.settings.generationMode || "source"));
+    validateLocalReferenceCapacity(input.assets);
+  }
+  if (detail) {
+    if (input.agentId !== "appearance-variants") throw new Error("产品详情图请选择外观方案工作流；本次尚未调用模型。");
+    validateDetailAssets(input.assets, String(input.settings.generationMode || "source"));
+    validateLocalReferenceCapacity(input.assets);
+  }
   if (input.agentId === "local-retouch" || input.settings.generationMode === "local") input = { ...input, agentId: "local-retouch", settings: { ...input.settings, generationMode: "local", workflowKind: localWorkflowKind(input.settings.workflowKind) } };
   if (input.agentId === "local-retouch") {
     const localAssets = providerAssetsForGenerationMode(input.assets, "local");
@@ -307,7 +362,8 @@ export async function runAgentJob(input: RunInput): Promise<{ job: GenerationJob
     const multiViewBoard = input.agentId === "multi-view" && resolveMultiViewBoard(input.content, requestedCount, typeof input.settings.multiViewBoard === "boolean" ? input.settings.multiViewBoard : undefined);
     const effectiveSettings = settingsWithResolvedCount(input.agentId, {
       ...input.settings,
-      boardItems: input.agentId === "multi-view" || input.settings.workflowKind === "view" ? 1 : normalizeBoardItemCount(input.settings.boardItems),
+      ...(detail ? { aspectRatio: detailOutputAspectRatio(input.settings.workflowKind, input.settings.designDirection, input.settings.aspectRatio) } : {}),
+      boardItems: input.agentId === "multi-view" || input.settings.workflowKind === "view" || detail ? 1 : normalizeBoardItemCount(input.settings.boardItems),
       userRequirements: input.content,
       ...(surfaceOnly ? { surfaceOnly: true, reconstructionRatio: 0 } : {}),
       ...(input.agentId === "multi-view" ? { multiViewBoard } : {}),
@@ -366,13 +422,16 @@ export async function runAgentJob(input: RunInput): Promise<{ job: GenerationJob
         userRequirements: input.content,
         });
       }
-      designPlan = enforceProductIdentityPlan(designPlan, input.content, normalizeBoardItemCount(effectiveSettings.boardItems));
-      if (isLocalSurfaceEditing({ agentId: input.agentId, generationMode, workflowKind: effectiveSettings.workflowKind })) designPlan = enforceLocalSurfacePlan(designPlan, input.content, requestedCount, effectiveSettings.workflowKind === "decal" ? "decal" : "cmf");
+      designPlan = detail ? enforceDetailPlan(designPlan, input.content, requestedCount, effectiveSettings.designDirection)
+        : packaging ? enforcePackagingPlan(designPlan, input.content, requestedCount)
+          : enforceProductIdentityPlan(designPlan, input.content, normalizeBoardItemCount(effectiveSettings.boardItems));
+      if (packaging || detail) { /* Task-specific constraints are enforced above. */ }
+      else if (isLocalSurfaceEditing({ agentId: input.agentId, generationMode, workflowKind: effectiveSettings.workflowKind })) designPlan = enforceLocalSurfacePlan(designPlan, input.content, requestedCount, effectiveSettings.workflowKind === "decal" ? "decal" : "cmf");
       else if (surfaceOnly) designPlan = enforceSurfaceOnlyPlan(designPlan, input.content, requestedCount);
       else if (generationMode === "local" || input.agentId === "local-retouch") designPlan = enforceLocalEditPlan(designPlan, input.content, requestedCount);
       imageContext = {
         ...providerContext,
-        userPrompt: `${providerContext.userPrompt}${designPlanPrompt(designPlan)}`,
+        userPrompt: detail ? `${providerContext.userPrompt}\n\n${detailPlanPrompt(designPlan)}` : `${providerContext.userPrompt}${designPlanPrompt(designPlan)}`,
         designPlan,
       };
     }
@@ -388,11 +447,11 @@ export async function runAgentJob(input: RunInput): Promise<{ job: GenerationJob
       jobId: job.id,
       imageUrls: image.imageUrls,
       resolution: String(effectiveSettings.resolution || "1K") as "1K" | "2K" | "4K",
-      ...((input.agentId === "cmf-colorways" || (input.agentId === "appearance-variants" && Number(effectiveSettings.reconstructionRatio || 0) > 0))
+      ...((input.agentId === "cmf-colorways" || (input.agentId === "appearance-variants" && !packaging && Number(effectiveSettings.reconstructionRatio || 0) > 0))
         && input.assets.find((asset) => asset.role === "structure" || asset.role === "result")
         ? { noveltyReference: input.assets.find((asset) => asset.role === "structure" || asset.role === "result")! } : {}),
       ...(input.agentId === "multi-view" && image.variants?.length ? { labels: image.variants.map((variant) => variant.designRoute) } : {}),
-      ...(String(effectiveSettings.generationMode || "") === "source"
+      ...(!packaging && !detail && String(effectiveSettings.generationMode || "") === "source"
         && Number(effectiveSettings.reconstructionRatio) === 0
         && detectNaturalDesignIntent(input.content) !== "multi-view"
         && !surfaceOnly
@@ -435,9 +494,10 @@ export async function runAgentJob(input: RunInput): Promise<{ job: GenerationJob
       },
       settingsSnapshot: {
         agentId: input.agentId,
-        workflowKind: ["shape", "view", "cmf", "decal", "scene"].includes(String(effectiveSettings.workflowKind || "")) ? effectiveSettings.workflowKind as "shape" | "view" | "cmf" | "decal" | "scene" : undefined,
+        workflowKind: ["shape", "view", "cmf", "decal", "scene", "packaging", "detail"].includes(String(effectiveSettings.workflowKind || "")) ? effectiveSettings.workflowKind as "shape" | "view" | "cmf" | "decal" | "scene" | "packaging" | "detail" : undefined,
         specifiedAngle: effectiveSettings.designDirection === "指定角度" ? String(effectiveSettings.freeChatViews || "") : undefined,
-        designDirections: { [input.agentId === "local-retouch" ? `local-retouch:${effectiveSettings.workflowKind}` : input.agentId]: String(effectiveSettings.designDirection || "自动判断") },
+        showDimensions: effectiveSettings.multiViewBoard ? effectiveSettings.showDimensions !== false : undefined,
+        designDirections: { [input.agentId === "local-retouch" ? `local-retouch:${effectiveSettings.workflowKind}` : detail ? "appearance-variants:detail" : packaging ? "appearance-variants:packaging" : input.agentId]: String(effectiveSettings.designDirection || "自动判断") },
         reconstructionRatio: Math.max(0, Math.min(100, Math.trunc(Number(effectiveSettings.reconstructionRatio) || 0))),
         direction: String(effectiveSettings.designDirection || "自动判断"),
         resolution: String(effectiveSettings.resolution || "1K") as "1K" | "2K" | "4K",

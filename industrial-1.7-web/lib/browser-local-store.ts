@@ -90,7 +90,7 @@ function checkProviders(providers: BrowserLocalProvider[] | undefined) {
     identifier(provider.id, "供应商编号");
     if (ids.has(provider.id)) invalid("供应商编号重复，未保存本次修改。");
     ids.add(provider.id);
-    if (!["geekai", "apiyi", "aihubmix", "openai-compatible"].includes(provider.type) || [provider.name, provider.baseUrl, provider.textModel, provider.imageModel, provider.workspaceId, provider.apiKey, provider.keyHint].some((value) => typeof value !== "string") || typeof provider.enabled !== "boolean" || typeof provider.hasApiKey !== "boolean" || !Array.isArray(provider.modelCatalog) || provider.modelCatalog.some((value) => typeof value !== "string")) invalid("本地供应商格式无效。");
+    if (!["geekai", "apiyi", "aihubmix", "relayrouter", "openai-compatible"].includes(provider.type) || [provider.name, provider.baseUrl, provider.textModel, provider.imageModel, provider.workspaceId, provider.apiKey, provider.keyHint].some((value) => typeof value !== "string") || typeof provider.enabled !== "boolean" || typeof provider.hasApiKey !== "boolean" || !Array.isArray(provider.modelCatalog) || provider.modelCatalog.some((value) => typeof value !== "string")) invalid("本地供应商格式无效。");
     checkVerifications(provider.modelVerifications);
     checkVerifications(provider.imageModelStatuses);
   }

@@ -1,39 +1,34 @@
-# 工业设计智能体 1.7 网页版
+# 工业设计智能体桌面客户端网页
 
-这是独立的 `industrial-design-agent` 1.7 本地网页，不修改 LIHUO / ai-workbench（`apps/web`、`packages/*`、`启动工作台.bat`）。
+这个目录是桌面安装包里 Electron 所包的 Next 服务端，对应安装路径：
 
-建议把整个仓库放在 Windows 路径：
+`D:\AI作图软件\工业设计智能体-1.7.0\resources\server`
 
-`D:\ai-industrial-web`
+界面、接口和静态资源都来自该服务目录（`lib/`、`components/`、`app/`、`public/`、`scripts/`、`package.json`，以及编译后的 `.next`）。这里没有另做网页皮肤。
 
-网页目录是其中的 `industrial-1.7-web`。开发服务固定使用端口 **3002**（3001 留给 LIHUO）。
+当前提交取自更新通道上仍可下载的 Windows 安装包 **1.8.0** 的 `resources/server`（`Industrial-Design-Agent-Setup-1.8.0-x64.exe`）。1.7.0 安装包地址已返回 404。若本机安装的仍是 1.7.0，用该安装目录下的 `resources\server` 覆盖本目录即可，保留其中的 `.next`，不要带上 `vendor` 或 `node_modules`。
 
-## 启动
+`.next` 已包含在仓库中（桌面界面的页面在编译结果里，源码树的 `app/` 只有部分接口）。若换用本机安装目录，请一并复制该目录的 `.next`。`vendor/` 与 `node_modules/` 不提交。
+
+开发机建议放在 `D:\ai-industrial-web`。网页端口 **3002**。
+
+```bat
+cd /d D:\ai-industrial-web
+启动工业设计网页.bat
+```
+
+或：
 
 ```bat
 cd /d D:\ai-industrial-web\industrial-1.7-web
-npm install
-npm run dev
+npm install --omit=dev
+npx next start -H 127.0.0.1 -p 3002
 ```
 
-或在仓库根目录双击 `启动工业设计网页.bat`。浏览器打开 <http://localhost:3002>。
+若 `next start` 因独立打包目录结构无法启动，则使用安装包自带入口：
 
-## 使用顺序
-
-1. **激活软件**。本机离线授权码是 `LOCAL-INDUS-1.7`。它不是官方 IDAI1 签名。短授权码 `ID2-…` 需要云端授权服务器，当前版本会拒绝，并且不会请求 `app.zhengshixiong.cn`。
-2. **连接模型**。填写自己的供应商 HTTPS 地址和 API Key。Key 只写入这台浏览器的 IndexedDB。
-3. **创建项目**，进入工作台。
-
-工作流与 1.7 平板一致：外观改款、配色 CMF、草图与结构、场景图、局部精修、多角度、细节图、自由对话。
-
-生成、项目和图片走快照里的浏览器本地实现（`lib/browser-local-api.ts`、`lib/browser-local-store.ts` 及提示词库）。结果保存在本机项目素材里，不是 LIHUO 的 GeneratePanel。
-
-带有效 Ed25519 签名、且能被 `license-ref/license-public.pem` 验过的 `IDAI1` 授权码可以离线激活。验签失败会拒绝。本程序不签发、不伪造官方签名。
-
-## 目录说明
-
-- `lib/`、`components/`、`app/api/projects/`、`license-ref/`、`ref-built/`、`SNAPSHOT.md` 来自 1.7 打包快照，作为行为依据。
-- 新增页面在 `app/page.tsx` 和 `components/tablet/`。
-- 离线授权在 `lib/offline-license.ts`，会话写在本目录 `.data/`（已忽略，不提交）。
-
-`package.snapshot.json` 保留原 1.7 包说明。当前 `package.json` 只安装本地网页需要的依赖。
+```bat
+set PORT=3002
+set HOSTNAME=127.0.0.1
+node server.js
+```

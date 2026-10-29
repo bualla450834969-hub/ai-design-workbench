@@ -1,7 +1,7 @@
 import { directText, fetchDirectModels, validateDirectProviderConfig, type BrowserDirectProvider } from "@/lib/browser-direct-provider";
 import type { BrowserLocalProvider, BrowserWorkspaceStore } from "@/lib/browser-local-store";
 
-const TYPES = new Set<DesktopProviderType>(["geekai", "apiyi", "aihubmix", "openai-compatible"]);
+const TYPES = new Set<DesktopProviderType>(["geekai", "apiyi", "aihubmix", "relayrouter", "openai-compatible"]);
 const IMAGE_MODEL = /(?:gpt[-_]?image|gemini[-_].*(?:image|imagen|nano[-_]?banana)|nano[-_]?banana|imagen[-_]?\d|seedream|flux[-_]|dall[-_]?e|grok[-_].*image)/i;
 const ROOT = "/api/web/providers";
 function object(value: unknown): Record<string, unknown> {

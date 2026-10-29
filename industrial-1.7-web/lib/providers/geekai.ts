@@ -11,6 +11,10 @@ import { boardPrompt, normalizeBoardItemCount, normalizeNaturalBoardItemCount } 
 import { productIdentityContract, stripGeneratedPromptBoilerplate } from "@/lib/product-identity";
 import { webSafeFetch } from "@/lib/web-network";
 import { assertWebGenerationLicense } from "@/lib/web-generation-license";
+import { isRelayRouterGeminiImageModel, isRelayRouterImageModel } from "@/lib/model-pricing";
+import { isPackagingDielineDirection, isPackagingWorkflow, packagingBoardContract, packagingModeContract, packagingReferenceRules, validatePackagingAssets } from "@/lib/packaging-design";
+import { DETAIL_IMAGE_CONTRACT, detailDirectionContract, detailReferenceRules, isDetailWorkflow, validateDetailAssets } from "@/lib/detail-images";
+import { containsDimensionInstruction, sixViewDimensionContract, sixViewSourceFidelityContract } from "@/lib/dimension-annotations";
 
 export type RuntimeConfig = {
   WEB_USER_ID?: string;
@@ -118,10 +122,38 @@ export function trustedImageDownloadHeaders(value: string): Record<string, strin
   } catch { return undefined; }
 }
 
-async function parseError(response: Response) {
+function providerHttpReason(status: number, detail = "") {
+  if (/no account capacity available/i.test(detail)) return "供应商报告无可用账号容量";
+  if (status === 401) return "供应商拒绝 API Key";
+  if (status === 402) return "供应商账户余额不足";
+  if (status === 403) return "供应商账号或所选模型权限不足";
+  if (status === 404) return "供应商接口或所选模型不存在";
+  if (status === 408) return "供应商请求超时";
+  if (status === 413) return "供应商拒绝过大的图片或请求";
+  if (status === 429) return "供应商限流或额度已用尽";
+  if (status >= 500) return "供应商或当前模型通道暂不可用，可能是容量不足或服务繁忙";
+  return "供应商拒绝请求";
+}
+
+function providerHttpAdvice(status: number) {
+  if (status === 401 || status === 403) return "请检查供应商 Key 与模型权限。";
+  if (status === 402) return "请检查供应商余额。";
+  if (status === 404) return "请刷新模型目录并核对所选模型。";
+  if (status === 429) return "请检查供应商限流与余额，稍后再尝试。";
+  return "请核对供应商日志及任务记录；若是图片生成，先确认扣费情况再重试。";
+}
+
+function providerRequestId(response: Response) {
+  const value = (response.headers.get("x-request-id") || response.headers.get("x-trace-id") || "").trim();
+  return /^(?:[a-f0-9]{16,64}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|req[_-][a-z0-9]{16,48})$/i.test(value) ? value : "";
+}
+
+async function parseError(response: Response, action = "模型调用") {
+  const requestId = providerRequestId(response);
+  const requestLabel = requestId ? `；供应商请求编号 ${requestId}` : "";
   if (providerScopeUserId()) {
     await response.body?.cancel();
-    return `模型平台拒绝请求（HTTP ${response.status}），请核对平台模型设置及供应商日志`;
+    return `${action}：${providerHttpReason(response.status)}（HTTP ${response.status}${requestLabel}）。${providerHttpAdvice(response.status)}`;
   }
   const body = await response.text().catch(() => "");
   let message = body;
@@ -129,8 +161,9 @@ async function parseError(response: Response) {
     const parsed = JSON.parse(body) as { error?: { message?: string; code?: string }; message?: string };
     message = parsed.error?.message || parsed.message || body;
   } catch { /* Some suppliers return plain text. */ }
-  const requestId = response.headers.get("x-request-id") || response.headers.get("x-trace-id");
-  return `${message.slice(0, 600) || response.statusText}${requestId ? `（请求编号 ${requestId}）` : ""}`;
+  const capacity = /no account capacity available/i.test(message);
+  const detail = capacity ? "" : `；供应商返回：${(message || response.statusText).replace(/\s+/g, " ").slice(0, 400)}`;
+  return `${action}：${providerHttpReason(response.status, message)}（HTTP ${response.status}${requestLabel}）${detail}。${providerHttpAdvice(response.status)}`;
 }
 
 async function parseJsonPayload<T>(response: Response, provider: string, label: string): Promise<T> {
@@ -161,7 +194,7 @@ type ReferenceImage = RawReferenceImage & { role: Asset["role"]; name: string; p
 type ImageTaskResult = { image: string; prompt: string; designRoute: string; revisedPrompt?: string; seed?: string | number };
 type ChatImagePart = { text?: string; inline_data?: { mime_type?: string; data?: string }; image_url?: string | { url?: string }; url?: string };
 type GeminiGenerateResponse = {
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string; inlineData?: { mimeType?: string; data?: string }; inline_data?: { mime_type?: string; data?: string } }> } }>;
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string; inlineData?: { mimeType?: string; data?: string }; inline_data?: { mime_type?: string; data?: string }; fileData?: { fileUri?: string } }> } }>;
   choices?: Array<{ message?: { content?: string | ChatImagePart[]; multi_mod_content?: ChatImagePart[]; images?: ChatImagePart[] } }>;
   data?: ImagesGenerateResponse["data"];
   error?: { message?: string };
@@ -185,7 +218,8 @@ function imageFromResponse(payload: GeminiGenerateResponse | ImagesGenerateRespo
   const chatImageUrl = chatParts.map((part) => typeof part.image_url === "string" ? part.image_url : part.image_url?.url || part.url).find(Boolean);
   const text = [...parts.map((part) => part.text), ...chatParts.map((part) => part.text), ...(gemini.choices?.map((choice) => typeof choice.message?.content === "string" ? choice.message.content : "") ?? [])].filter(Boolean).join("\n").trim();
   const data = payload.data || [];
-  return { image: parseImageDataUrl(inline?.mimeType, inline?.data) || parseImageDataUrl(chatInline?.mime_type, chatInline?.data) || chatImageUrl || data.map((item) => item.url || (item.b64_json ? `data:image/png;base64,${item.b64_json}` : "")).find(Boolean) || imageUrlFromText(text), text };
+  const fileImage = parts.map((part) => part.fileData?.fileUri).find((value) => /^https:\/\//i.test(value || ""));
+  return { image: parseImageDataUrl(inline?.mimeType, inline?.data) || parseImageDataUrl(chatInline?.mime_type, chatInline?.data) || fileImage || chatImageUrl || data.map((item) => item.url || (item.b64_json ? `data:image/png;base64,${item.b64_json}` : "")).find(Boolean) || imageUrlFromText(text), text };
 }
 
 function emptyImageError(payload: GeminiGenerateResponse | ImagesGenerateResponse, provider: string, label: string) {
@@ -262,6 +296,16 @@ function isMultiViewContext(context: ProviderContext) {
 }
 
 function referenceRoleLabel(image: ReferenceImage, context: ProviderContext) {
+  if (isDetailWorkflow(context.settings?.workflowKind)) {
+    if (image.primaryProduct) return "展示产品主原图（锁定真实比例、结构、颜色、材质和已有标识；允许重构展示画面）";
+    if (image.role === "structure" || image.role === "result") return "同一产品辅助角度（只补充真实可见细节）";
+    if (image.role === "style") return "展示风格参考（只借鉴抽象构图、背景和灯光，不复制商品或文案）";
+  }
+  if (isPackagingWorkflow(context.settings?.workflowKind)) {
+    if (image.primaryProduct) return "被包装产品原图（锁定产品身份、形态与尺度；包装容器可以新增，不继承原图拍摄构图）";
+    if (image.role === "structure" || image.role === "result") return "同一产品辅助角度（只补充产品形态与尺寸关系）";
+    if (image.role === "style") return "包装设计参考（只借鉴抽象包装形式、材料和风格，不复制品牌商标文字）";
+  }
   if (image.primaryProduct) return isMultiViewContext(context) ? "主产品原图（只锁定产品身份、品类、结构、功能、比例与CMF；不锁定原拍摄视角或拼版布局）" : "主产品原图（决定构图、主要视角、品类、结构、功能与比例）";
   if (image.role === "structure" || image.role === "result") return isMultiViewContext(context) ? "同一产品辅助角度（只补充可见结构依据，不要求复制其视角和布局）" : "同一产品辅助角度（补充不可见结构，不改变主图构图）";
   return `${assetRoleLabel(image.role)}${image.tags?.length ? `；参考维度=[${image.tags.join("，")}]` : ""}${image.role === "style" && image.tags?.includes("参考绘画风格") ? `；${DRAWING_STYLE_REFERENCE_CONSTRAINT}` : ""}`;
@@ -290,16 +334,18 @@ function multiViewPrompt(context: ProviderContext, index: number, count: number)
   const offset = Math.max(0, Math.trunc(Number(context.settings?.batchOffset) || 0));
   const target = suppliedViews[index + offset] || views[index + offset] || `环绕视角 ${Math.round((index + offset) * 360 / count)}°`;
   const resolution = String(context.settings?.resolution || (board ? "4K" : "1K"));
-  const extras = content.split(/[。；;\n]/).filter((clause) => clause.trim() && !/角度|视角|视图|张|整版|拼图|拼版|布局/.test(clause)).join("；").slice(0, 2000);
+  const extras = content.split(/[。；;\n]/).filter((clause) => clause.trim() && !/角度|视角|视图|张|整版|拼图|拼版|布局/.test(clause) && !(context.settings?.showDimensions === false && containsDimensionInstruction(clause))).join("；").slice(0, 2000);
   const presentation = context.assets?.some((asset) => asset.role === "style" && asset.tags?.includes("参考绘画风格")) ? DRAWING_STYLE_REFERENCE_CONSTRAINT : "保持同一产品的材质、颜色和光照表达，不做新的造型设计。";
   return [
     `本次只生成 1 张图片，目标输出 ${resolution}。这是同一已完成产品的视角重建，不是外观改款。`,
-    "最高优先级：全部结果必须保持参考产品的外轮廓、长宽高比例、结构拓扑、关键部件数量与位置、连接关系、CMF和标识一致。只能改变相机观察方向，严禁改变造型、增删部件或换一个产品。以产品自身前后左右坐标定义角度，不以屏幕左右定义。",
+    `最高优先级：只能改变相机观察方向，严禁改变造型、增删部件或换一个产品。以产品自身前后左右坐标定义角度，不以屏幕左右定义。${sixViewSourceFidelityContract()}`,
     "主原图和辅助图仅作为同一产品的身份及可见结构依据，不是相机或版式模板。若参考图已有多个视图，只提取同一产品结构，绝不能照抄、裁切、镜像或复刻参考图的整板排布。隐藏面缺少依据时只做保守概念推断，不能凭空添加零件。",
     board
       ? `只输出${multiViewBoardLabel(content, fallbackCount)}，严格${requestedStandardViewCount(content, fallbackCount)}格：${views.map((view, viewIndex) => `第${viewIndex + 1}格=${view}（${cameraForView(view)}）`).join("；")}。每格仅一个完整产品，角度不重复；所有格统一比例、主体尺度、白色背景、光照和安全边距。`
       : `本张唯一目标视角：「${target}」。${cameraForView(target)}画面中只放一个该角度的完整产品，不得再制作多视图拼版、接触表、缩略图、画中画或多个角度。不得输出另一视角，也不得重复主原图的三分之四角度。`,
-    "严格执行本次目标相机，不复制参考图的拍摄角度。完整入镜，主体居中，统一尺度、背景和光照，四周留安全边距。不要文字、角度名称、数字、标签、说明或水印。",
+    board && requestedStandardViewCount(content, fallbackCount) === 6
+      ? `严格执行本次目标相机，不复制参考图的拍摄角度。完整入镜，主体居中，统一尺度、背景和光照，四周留${context.settings?.showDimensions === false ? "产品轮廓" : "尺寸线"}所需的安全边距。${sixViewDimensionContract(content, { showDimensions: context.settings?.showDimensions !== false, category: context.designPlan?.productCategory })}`
+      : "严格执行本次目标相机，不复制参考图的拍摄角度。完整入镜，主体居中，统一尺度、背景和光照，四周留安全边距。不要文字、角度名称、数字、标签、说明或水印。",
     productIdentityContract(board ? requestedStandardViewCount(content, fallbackCount) : 1, content),
     presentation,
     extras ? `用户额外约束（不能解除以上产品身份锁定）：${extras}` : "",
@@ -323,7 +369,8 @@ function useGeminiNativeImageApi(model: string) {
   // API易 publishes this native endpoint, including Nano 2.1 imageConfig.
   // https://help.apiyi.com/en/nano-banana-2-1-improvements-vs-nano-banana-pro-en.html
   return (provider === "geekai" && normalized.startsWith("gemini-") && (normalized.includes("image") || normalized === "gemini-nano-banana-2.1"))
-    || (provider === "apiyi" && /^gemini-(?:3\.1-flash-image(?:-preview)?|3-pro-image(?:-preview)?|nano-banana-2\.1)$/.test(normalized));
+    || (provider === "apiyi" && /^gemini-(?:3\.1-flash-image(?:-preview)?|3-pro-image(?:-preview)?|nano-banana-2\.1)$/.test(normalized))
+    || (provider === "relayrouter" && isRelayRouterGeminiImageModel(normalized));
 }
 
 function useAiHubMixImageApi(model: string) {
@@ -348,12 +395,11 @@ function aiHubMixGptImageSize(ratio: string) {
   return ratio === "3:4" || ratio === "9:16" ? "1024x1536" : "1536x1024";
 }
 
-function aiHubMixGptImageForm(model: string, prompt: string, size: string, references: ReferenceImage[]) {
+function standardGptImageEditForm(model: string, prompt: string, size: string, references: ReferenceImage[]) {
   const form = new FormData();
   for (const [key, value] of Object.entries({ model, prompt, n: "1", size, output_format: "png" })) form.set(key, value);
-  // The official Images edit endpoint accepts binary multipart input, rather
-  // than GeekAI's base64 image array on the generations JSON endpoint.
-  // https://docs.aihubmix.com/cn/api/GPT-Image-1
+  // OpenAI-compatible image edits use binary multipart input, rather than
+  // GeekAI's base64 image array on the generations JSON endpoint.
   references.forEach((image, index) => {
     const mimeType = image.mimeType.split(";")[0];
     const extension = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
@@ -423,6 +469,23 @@ function optionPrompt(context: ProviderContext, index: number, count: number) {
     productCategory: context.designPlan?.productCategory,
     hasProductImage: context.assets?.some((asset) => asset.role === "structure" || asset.role === "result"),
   });
+  if (isDetailWorkflow(context.settings?.workflowKind)) {
+    validateDetailAssets(context.assets || [], String(context.settings?.generationMode || "source"));
+    const base = context.userPrompt.includes("<generation_contract>") ? context.userPrompt : `${context.userPrompt}\n\n${DETAIL_IMAGE_CONTRACT}\n${detailDirectionContract(context.settings?.designDirection)}\n${detailReferenceRules(context.assets || [])}`;
+    return [base, `本次只生成一张完整产品展示图，批次第 ${index + 1}/${count} 张，目标输出 ${String(context.settings?.resolution || "1K")}，画幅 ${aspectRatio(context)}。`,
+      context.designPlan ? `本张展示路线：${context.designPlan.variantDirections[index] || "展示同一原产品"}` : "",
+    ].filter(Boolean).join("\n\n");
+  }
+  if (isPackagingWorkflow(context.settings?.workflowKind)) {
+    validatePackagingAssets(context.assets || [], String(context.settings?.generationMode || "source"));
+    const direction = context.settings?.designDirection;
+    const dieline = isPackagingDielineDirection(direction);
+    return [context.userPrompt, `本次只生成一张完整${dieline ? "包装概念刀版展开图" : "包装展示图"}，批次第 ${index + 1}/${count} 张，目标输出 ${String(context.settings?.resolution || "1K")}。`,
+      packagingModeContract(direction), packagingReferenceRules(context.assets || []), packagingBoardContract(boardItems, direction),
+      context.designPlan ? `本张包装路线：${context.designPlan.variantDirections[index] || "设计适配原产品的包装"}。产品本体必须保留：${context.designPlan.mandatoryConstraints.join("；")}` : "",
+      dieline ? "画面主体仅是可阅读的平面展开刀版，不放产品渲染、立体包装效果图或展示场景。" : "每套包装与其对应的原产品应有清楚、合理的容纳与陈列关系；允许展示产品和包装两个对象，不能把包装变化画成产品造型变化。",
+    ].filter(Boolean).join("\n\n");
+  }
   if (isLocalSurfaceEditing({ agentId: context.agentId, generationMode: context.settings?.generationMode, workflowKind: context.settings?.workflowKind })) {
     const kind = context.settings?.workflowKind === "decal" ? "decal" : "cmf";
     const annotation = context.assets?.some((asset) => asset.role === "annotation");
@@ -575,6 +638,7 @@ function aspectRatio(context: ProviderContext) {
 
 function requestedImageSize(context: ProviderContext, model: string) {
   const requested = String(context.settings?.resolution || "1K");
+  if (/^gemini-3\.1-flash-lite-image$/i.test(model)) return "1K";
   if (!/^gemini-(?:3|nano-banana)/i.test(model)) return undefined;
   return requested === "4K" || requested === "2K" ? requested : "1K";
 }
@@ -607,7 +671,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
           }),
           signal: requestSignal(fastEnhancement ? 25_000 : 150_000, context.signal),
         });
-        if (!response.ok) throw new ProviderError(await parseError(response), this.name, response.status === 429 || response.status >= 500, response.status);
+        if (!response.ok) throw new ProviderError(await parseError(response, "文字分析"), this.name, response.status === 429 || response.status >= 500, response.status);
         const payload = await parseJsonPayload<{ choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }> }>(response, this.name, "文字模型");
         const raw = payload.choices?.[0]?.message?.content;
         const text = typeof raw === "string" ? raw : raw?.map((part) => part.text ?? "").join("\n") ?? "";
@@ -628,6 +692,11 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
   async generateImages(context: ProviderContext, count: number): Promise<ImageOutput> {
     const model = this.configuredImageModel();
     if (!this.isConfigured() || !model) throw new ProviderError("GeekAI 图像模型尚未配置", this.name, false);
+    if (isPackagingWorkflow(context.settings?.workflowKind)) validatePackagingAssets(context.assets || [], String(context.settings?.generationMode || "source"));
+    if (isDetailWorkflow(context.settings?.workflowKind)) validateDetailAssets(context.assets || [], String(context.settings?.generationMode || "source"));
+    if (pickConfig("GEEKAI_PROVIDER_TYPE", "GEEKAI_PROVIDER_TYPE", "geekai") === "relayrouter" && !isRelayRouterImageModel(model)) {
+      throw new ProviderError("RelayRouter 当前仅开放已适配的 Gemini 图片、GPT Image 2 与 2.5 型号；本次未发起付费请求。", this.name, false);
+    }
     const targetCount = Math.max(1, Math.min(Math.trunc(count || 1), 100));
     if (useGeminiNativeImageApi(model)) return this.generateGeminiImages(context, model, targetCount);
     if (useAiHubMixImageApi(model)) return this.generateAiHubMixImages(context, model, targetCount);
@@ -637,6 +706,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
   private async generateGeminiImages(context: ProviderContext, model: string, count: number): Promise<ImageOutput> {
     const references = await imageReferences(context);
     const apiKey = pickConfig("GEEKAI_API_KEY", "GEEKAI_API_KEY");
+    const relayRouter = pickConfig("GEEKAI_PROVIDER_TYPE", "GEEKAI_PROVIDER_TYPE", "geekai") === "relayrouter";
     let completed = 0;
     const batch = await mapWithConcurrency<ImageTaskResult>(count, imageConcurrency(), async (index) => {
       const prompt = optionPrompt(context, index, count);
@@ -644,7 +714,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          "x-goog-api-key": String(apiKey),
+          ...(!relayRouter ? { "x-goog-api-key": String(apiKey) } : {}),
           Accept: "application/json",
           "Content-Type": "application/json",
         },
@@ -657,7 +727,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
                 : `${prompt}\n\n本次正式生图没有附带上传图片的原始像素；严格依据前置视觉分析和本张设计路线生成。` },
               ...references.flatMap((image, referenceIndex) => [
                 { text: `图片 ${referenceIndex + 1}：${referenceRoleLabel(image, context)}；文件名=${image.name}` },
-                { inlineData: { mimeType: image.mimeType, data: image.data } },
+                relayRouter ? { inline_data: { mime_type: image.mimeType, data: image.data } } : { inlineData: { mimeType: image.mimeType, data: image.data } },
               ]),
             ],
           }],
@@ -669,7 +739,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
         }),
         signal: requestSignal(180_000, context.signal),
       });
-      if (!response.ok) throw new ProviderError(await parseError(response), this.name, response.status === 429 || response.status >= 500, response.status);
+      if (!response.ok) throw new ProviderError(await parseError(response, "图片生成"), this.name, response.status === 429 || response.status >= 500, response.status);
       const payload = await parseJsonPayload<GeminiGenerateResponse>(response, this.name, "Gemini 图片模型");
       const { image, text } = imageFromResponse(payload);
       if (!image) throw emptyImageError(payload, this.name, "Gemini 图片模型");
@@ -692,13 +762,15 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
     const references = await imageReferences(context);
     const apiKey = pickConfig("GEEKAI_API_KEY", "GEEKAI_API_KEY");
     const aiHubMixGpt = useAiHubMixGptImageApi(model);
-    const aiHubMixEdit = aiHubMixGpt && references.length > 0;
-    const size = aiHubMixGpt ? aiHubMixGptImageSize(aspectRatio(context)) : imageSizeFor(model, aspectRatio(context));
+    const relayRouterGpt = pickConfig("GEEKAI_PROVIDER_TYPE", "GEEKAI_PROVIDER_TYPE", "geekai") === "relayrouter" && isRelayRouterImageModel(model);
+    const standardGpt = aiHubMixGpt || relayRouterGpt;
+    const standardGptEdit = standardGpt && references.length > 0;
+    const size = standardGpt ? aiHubMixGptImageSize(aspectRatio(context)) : imageSizeFor(model, aspectRatio(context));
     let completed = 0;
     const batch = await mapWithConcurrency<ImageTaskResult>(count, imageConcurrency(), async (index) => {
       const basePrompt = optionPrompt(context, index, count);
       const finalPrompt = references.length
-        ? `${basePrompt}\n\n图片已按角色排序，角色优先于上传顺序：\n${references.map((image, referenceIndex) => `图片 ${referenceIndex + 1}：${referenceRoleLabel(image, context)}；文件名=${image.name}`).join("\n")}\n${isMultiViewContext(context) ? "主产品原图只锁定产品身份和结构；必须使用本次唯一目标角度或指定整版角度，不继承原图构图、相机和排布。" : "主产品原图决定构图和主要视角；辅助角度只补充同一产品的结构。"}设计参考图绝不能成为目标产品，只能迁移被用户允许的参考维度。`
+        ? `${basePrompt}\n\n图片已按角色排序，角色优先于上传顺序：\n${references.map((image, referenceIndex) => `图片 ${referenceIndex + 1}：${referenceRoleLabel(image, context)}；文件名=${image.name}`).join("\n")}\n${isDetailWorkflow(context.settings?.workflowKind) ? "产品原图只锁定产品身份和外观；按本轮详情图方向重新构图和布光，不继承原图背景、画幅或相机布局，不做半透明叠图。" : isPackagingWorkflow(context.settings?.workflowKind) ? "产品原图锁定被包装产品的形态和尺度，不锁定包装展示构图；参考图只提供抽象包装语言，包装容器可以新增。" : isMultiViewContext(context) ? "主产品原图只锁定产品身份和结构；必须使用本次唯一目标角度或指定整版角度，不继承原图构图、相机和排布。" : "主产品原图决定构图和主要视角；辅助角度只补充同一产品的结构。"}设计参考图绝不能成为目标产品，只能迁移被用户允许的参考维度。`
         : basePrompt;
       const body: Record<string, unknown> = {
         model,
@@ -706,18 +778,18 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
         n: 1,
         size,
         ...synchronousImageExtension(),
-        ...(aiHubMixGpt ? { output_format: "png" } : {}),
-        ...(!aiHubMixGpt && references.length ? { image: references.map((image) => image.data) } : {}),
+        ...(standardGpt ? { output_format: "png" } : {}),
+        ...(!standardGpt && references.length ? { image: references.map((image) => image.data) } : {}),
       };
-      const response = await providerFetch(v1ApiUrl(aiHubMixEdit ? "images/edits" : "images/generations"), {
+      const response = await providerFetch(v1ApiUrl(standardGptEdit ? "images/edits" : "images/generations"), {
         method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, ...(aiHubMixEdit ? {} : { "Content-Type": "application/json" }) },
-        body: aiHubMixEdit ? aiHubMixGptImageForm(model, finalPrompt, size, references) : JSON.stringify(body),
+        headers: { Authorization: `Bearer ${apiKey}`, ...(standardGptEdit ? {} : { "Content-Type": "application/json" }) },
+        body: standardGptEdit ? standardGptImageEditForm(model, finalPrompt, size, references) : JSON.stringify(body),
         // AIHubMix documents GPT Image 2 generations taking >5 minutes and
         // recommends >=10 minutes. Timeout must not issue another paid call.
-        signal: requestSignal(aiHubMixGpt ? 600_000 : 180_000, context.signal),
+        signal: requestSignal(standardGpt ? 600_000 : 180_000, context.signal),
       });
-      if (!response.ok) throw new ProviderError(await parseError(response), this.name, response.status === 429 || response.status >= 500, response.status);
+      if (!response.ok) throw new ProviderError(await parseError(response, "图片生成"), this.name, response.status === 429 || response.status >= 500, response.status);
       const payload = await parseJsonPayload<ImagesGenerateResponse>(response, this.name, "图片模型");
       const image = imageFromResponse(payload).image;
       const prompt = (payload.data ?? []).map((item) => item.revised_prompt).find(Boolean);
@@ -765,7 +837,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
       }).catch((error) => {
         throw new ProviderError(`未能连接 AIHubMix 图片接口（${error instanceof Error ? error.message : "网络错误"}）。如果供应商没有生成日志，请检查网络或代理连接；请先核对账单，再决定是否重新生图。`, this.name, false);
       });
-      if (!response.ok) throw new ProviderError(await parseError(response), this.name, response.status === 429 || response.status >= 500, response.status);
+      if (!response.ok) throw new ProviderError(await parseError(response, "图片生成"), this.name, response.status === 429 || response.status >= 500, response.status);
       const payload = await parseJsonPayload<GeminiGenerateResponse>(response, this.name, "AIHubMix 图片模型");
       const { image, text } = imageFromResponse(payload);
       if (!image) throw emptyImageError(payload, this.name, "AIHubMix 图片模型");

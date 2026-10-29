@@ -9,9 +9,11 @@ export const runtime = "nodejs";
 const workspaceStateSchema = z.object({
   selectedAssets: z.array(z.string()).optional(),
   agentId: z.enum(["appearance-variants", "local-retouch"]).optional(),
-  workflowKind: z.enum(["shape", "view", "cmf", "decal", "scene"]).optional(),
+  workflowKind: z.enum(["shape", "view", "cmf", "decal", "scene", "packaging", "detail"]).optional(),
+  overallWorkflowKind: z.enum(["shape", "view", "cmf", "decal", "scene", "packaging", "detail"]).optional(),
   designDirections: z.record(z.string(), z.string()).optional(),
   specifiedAngle: z.string().max(160).optional(),
+  showDimensions: z.boolean().optional(),
   reconstructionRatio: z.number().int().min(0).max(100).optional(),
   outputCount: z.number().int().min(1).max(100).optional(),
   boardItems: z.preprocess(migrateLegacyBoardItemCount, z.union([z.literal(1), z.literal(4), z.literal(9)])).optional(),
