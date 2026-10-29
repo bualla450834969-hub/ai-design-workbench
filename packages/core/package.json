@@ -20,13 +20,17 @@
     "./license": {
       "types": "./dist/lib/license-catalog.d.ts",
       "import": "./dist/lib/license-catalog.js"
+    },
+    "./idai1": {
+      "types": "./dist/lib/idai1-offline.d.ts",
+      "import": "./dist/lib/idai1-offline.js"
     }
   },
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
-    "test": "npm run typecheck && node --experimental-strip-types --test __tests__/license-catalog.test.ts",
+    "test": "npm run typecheck && node --experimental-strip-types --test __tests__/license-catalog.test.ts __tests__/idai1-offline.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

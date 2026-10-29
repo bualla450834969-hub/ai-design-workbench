@@ -192,6 +192,12 @@ export function estimateCost(count: number, config: CostConfig): number {
 }
 
 // 授权码管理
+export function normalizeStoredLicense(code: string): string {
+  const compact = code.trim().replace(/\s+/g, "");
+  if (/^idai1\./i.test(compact)) return `IDAI1.${compact.slice(6)}`;
+  return compact.toUpperCase();
+}
+
 export function getLicenseCode(): string {
   if (typeof window === "undefined") return "";
   return localStorage.getItem("licenseCode") || "";
@@ -199,7 +205,7 @@ export function getLicenseCode(): string {
 
 export function saveLicenseCode(code: string) {
   if (typeof window === "undefined") return;
-  localStorage.setItem("licenseCode", code);
+  localStorage.setItem("licenseCode", normalizeStoredLicense(code));
 }
 
 export function clearLicenseCode() {

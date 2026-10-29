@@ -93,6 +93,8 @@ export {
   writeStoredLicenseFile,
 } from "./lib/license-catalog";
 export type { LicenseRecord } from "./lib/license-catalog";
+export { verifyOfflineIdai1 } from "./lib/idai1-offline";
+export type { OfflineLicenseCheck } from "./lib/idai1-offline";
 
 // 核心生成引擎（完整 pipeline）
 export { POST as runGenerationPipeline } from "./pipeline/generate-engine";

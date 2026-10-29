@@ -1,6 +1,7 @@
 // 授权码管理模块
 // 支持文件存储（本地/Electron）和 Upstash Redis（生产）
 
+import { verifyOfflineIdai1 } from "@workbench/core/idai1";
 import { lookupLicense, normalizeLicenseCode, unknownLicenseMessage } from "@workbench/core/license";
 import { MAX_DEVICES_PER_LICENSE } from './license-store';
 
@@ -80,11 +81,31 @@ async function isDeviceBound(licenseCode: string, deviceId: string): Promise<boo
   return devices.includes(deviceId);
 }
 
+async function bindOfflineSeat(storageKey: string, deviceId: string, seatLimit: number, successMessage: string) {
+  const alreadyBound = await isDeviceBound(storageKey, deviceId);
+  if (alreadyBound) {
+    return { valid: true, message: "离线授权验证通过", alreadyBound: true, unlimited: false };
+  }
+  const boundDevices = await getBoundDevices(storageKey);
+  if (boundDevices.length >= seatLimit) {
+    return { valid: false, message: `该授权码已绑定 ${seatLimit} 个设备，达到上限` };
+  }
+  const success = await bindDevice(storageKey, deviceId);
+  if (!success) return { valid: false, message: "设备绑定失败，请稍后重试" };
+  return { valid: true, message: successMessage, alreadyBound: false, unlimited: false };
+}
+
 // 验证授权码并绑定设备
 export async function verifyAndBindLicense(
   licenseCode: string,
   deviceId: string
 ): Promise<{ valid: boolean; message: string; alreadyBound?: boolean; unlimited?: boolean }> {
+  const offline = verifyOfflineIdai1(licenseCode);
+  if (offline.recognized) {
+    if (!offline.ok) return { valid: false, message: offline.message };
+    return bindOfflineSeat(offline.storageKey, deviceId, offline.seatLimit, offline.message);
+  }
+
   const code = canonicalCode(licenseCode);
   const record = lookupLicense(code);
   const unlimited = Boolean(record?.unlimited);
@@ -130,6 +151,18 @@ export async function verifyLicenseOnly(
   licenseCode: string,
   deviceId: string
 ): Promise<{ valid: boolean; message: string }> {
+  const offline = verifyOfflineIdai1(licenseCode);
+  if (offline.recognized) {
+    if (!offline.ok) return { valid: false, message: offline.message };
+    const alreadyBound = await isDeviceBound(offline.storageKey, deviceId);
+    if (alreadyBound) return { valid: true, message: "离线授权验证通过" };
+    const boundDevices = await getBoundDevices(offline.storageKey);
+    if (boundDevices.length >= offline.seatLimit) {
+      return { valid: false, message: "授权码设备数已达上限" };
+    }
+    return { valid: true, message: "离线授权验证通过" };
+  }
+
   const code = canonicalCode(licenseCode);
   const record = lookupLicense(code);
   const unlimited = Boolean(record?.unlimited);
@@ -166,6 +199,27 @@ export async function getLicenseStatus(
   thisDeviceBound: boolean;
   unlimited: boolean;
 }> {
+  const offline = verifyOfflineIdai1(licenseCode);
+  if (offline.recognized) {
+    if (!offline.ok) {
+      return {
+        valid: false,
+        deviceCount: 0,
+        maxDevices: offline.seatLimit || 0,
+        thisDeviceBound: false,
+        unlimited: false,
+      };
+    }
+    const boundDevices = await getBoundDevices(offline.storageKey);
+    return {
+      valid: true,
+      deviceCount: boundDevices.length,
+      maxDevices: offline.seatLimit,
+      thisDeviceBound: boundDevices.includes(deviceId),
+      unlimited: false,
+    };
+  }
+
   const code = canonicalCode(licenseCode);
   const record = lookupLicense(code);
   const unlimited = Boolean(record?.unlimited);

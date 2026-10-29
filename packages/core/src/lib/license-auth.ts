@@ -1,5 +1,6 @@
 ﻿import crypto from "node:crypto";
 import { getLicensePool, isLicenseDatabaseConfigured } from "../lib/license-db";
+import { verifyOfflineIdai1 } from "./idai1-offline";
 import { lookupLicense, normalizeLicenseCode, unknownLicenseMessage } from "./license-catalog";
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 365;
@@ -161,6 +162,22 @@ export function getLicenseRequestMeta(request: Request) {
 }
 
 async function activateLegacyLicense(code: string, deviceId: string): Promise<LicenseSession> {
+  const offline = verifyOfflineIdai1(code);
+  if (offline.recognized) {
+    if (!offline.ok) throw new LicenseError(offline.message);
+    const codeHash = hashLicenseCode(offline.storageKey);
+    const deviceHash = hashDeviceId(deviceId);
+    const issued = createSessionToken(offline.licenseId, codeHash, deviceHash);
+    return {
+      licenseId: offline.licenseId,
+      token: issued.token,
+      expiresAt: issued.expiresAt,
+      maxDevices: offline.seatLimit,
+      activeDevices: 1,
+      message: offline.message,
+    };
+  }
+
   const record = lookupLicense(code);
   if (!record) throw new LicenseError(unknownLicenseMessage(code));
 
@@ -219,7 +236,7 @@ export async function activateLicense({
     const license = licenseResult.rows[0];
     if (!license) {
       await client.query("rollback").catch(() => undefined);
-      if (lookupLicense(code)) return activateLegacyLicense(code, deviceId);
+      if (verifyOfflineIdai1(code).recognized || lookupLicense(code)) return activateLegacyLicense(code, deviceId);
       throw new LicenseError(unknownLicenseMessage(code));
     }
     if (license.status !== "active") throw new LicenseError("这个授权码已停用，请联系管理员。");

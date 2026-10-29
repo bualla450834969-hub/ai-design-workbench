@@ -2,6 +2,21 @@
 
 基于 AI-Design-Pro 核心引擎重构的产品外观设计工作台，支持产品外观重构、商品套图生成、电商详情页设计。
 
+## 本地平板网页版（Windows，D:\）
+
+这是工业设计智能体平板界面的本地网页副本：激活、连接自己的 API Key、创建项目，然后做外观改款 / 结果 / 历史。授权在本机校验，不连接 `app.zhengshixiong.cn`。
+
+推荐目录：`D:\ai-tablet-web`（也可以放在已有的 `D:\ai-workbench-web`）。需要 Node.js 24.x。
+
+```bat
+git clone <your-repo-url> D:\ai-tablet-web
+cd /d D:\ai-tablet-web
+npm install
+npm run dev
+```
+
+浏览器打开 http://localhost:3001 ，粘贴已有的 `IDAI1...` 授权码。也可以双击仓库根目录的 `启动平板工作台.bat`。更完整的说明见 [docs/tablet-windows.md](docs/tablet-windows.md)。
+
 ## 功能特性
 
 ### 核心功能
@@ -42,7 +57,7 @@
 ## 本地开发
 
 ### 环境要求
-- Node.js 22.x
+- Node.js 24.x
 - npm 10+
 
 ### 安装步骤
