@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect } from "react";
-import { loadCostConfig, saveCostConfig, type CostConfig, getLicenseCode, saveLicenseCode, getDeviceId } from "@/utils";
+import { loadCostConfig, saveCostConfig, type CostConfig, getLicenseCode, saveLicenseCode, getDeviceId, normalizeStoredLicense } from "@/utils";
 import { useToast } from "@/components/Toast";
 import {
   isFileSystemAccessSupported,
@@ -84,10 +84,8 @@ export default function SettingsPanel() {
   const [isVerifyingLicense, setIsVerifyingLicense] = useState(false);
   const [saveDirName, setSaveDirName] = useState<string | null>(null);
   const [autoSave, setAutoSave] = useState(() => isAutoSaveEnabled());
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    if (typeof window === "undefined") return "dark";
-    return (localStorage.getItem("theme") as "dark" | "light") || "dark";
-  });
+  const [theme, setTheme] = useState<"dark" | "light">("light");
+  const [themeReady, setThemeReady] = useState(false);
   const [isSelectingDir, setIsSelectingDir] = useState(false);
   const { showToast } = useToast();
 
@@ -96,11 +94,17 @@ export default function SettingsPanel() {
     getSavedDirectoryName().then(setSaveDirName);
   }, []);
 
-  // 应用主题
   useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark" || saved === "light") setTheme(saved);
+    setThemeReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!themeReady) return;
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
-  }, [theme]);
+  }, [theme, themeReady]);
 
   const handleSelectDirectory = async () => {
     if (!isFileSystemAccessSupported()) {
@@ -166,8 +170,9 @@ export default function SettingsPanel() {
       });
       const result = await res.json();
       if (result.valid) {
-        saveLicenseCode(licenseCode.trim().toUpperCase());
-        setLicenseCode(licenseCode.trim().toUpperCase());
+        const stored = normalizeStoredLicense(licenseCode);
+        saveLicenseCode(stored);
+        setLicenseCode(stored);
         showToast(result.alreadyBound ? "授权验证通过" : "授权成功，设备已绑定", "success");
         // 查询状态
         const statusRes = await fetch("/api/license/status", {
@@ -226,24 +231,27 @@ export default function SettingsPanel() {
       {/* 授权码 */}
       <section className="glass-card rounded-2xl p-4">
         <h2 className="mb-1 text-sm font-semibold text-white">授权码</h2>
-        <p className="mb-3 text-xs text-white/50">每个授权码最多绑定 3 个设备，绑定后不可解绑</p>
+        <p className="mb-3 text-xs text-white/50">IDAI1 在本机离线校验，台数上限以授权码为准。LIHUO 码最多绑定 3 个设备。</p>
         <div className="space-y-3">
           <div className="flex gap-2">
             <input
               type="text"
               value={licenseCode}
-              onChange={(e) => setLicenseCode(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                const value = e.target.value;
+                setLicenseCode(/^idai1\./i.test(value.trim()) ? value : value.toUpperCase());
+              }}
               onPaste={(e) => {
                 const text = e.clipboardData.getData('text');
-                setLicenseCode(text.toUpperCase().trim());
+                setLicenseCode(/^idai1\./i.test(text.trim()) ? text.trim() : text.toUpperCase().trim());
                 e.preventDefault();
               }}
-              placeholder="输入授权码，例如 LIHUO88888888"
+              placeholder="粘贴 IDAI1 或 LIHUO 授权码"
               autoComplete="off"
               autoCorrect="off"
-              autoCapitalize="characters"
+              autoCapitalize="off"
               spellCheck={false}
-              className="input-field flex-1 rounded-lg px-3 py-2 text-sm uppercase"
+              className="input-field flex-1 rounded-lg px-3 py-2 text-sm"
             />
             <button
               onClick={handleVerifyLicense}

@@ -20,13 +20,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: licenseResult.message || "授权验证失败" }, { status: 403 });
   }
 
-  // 注入授权码到核心层（核心层用 accessCode 字段）
+  // IDAI1 载荷区分大小写。LIHUO / TESTER 仍按原样折叠为大写。
+  const compactLicense = String(licenseCode).trim().replace(/\s+/g, "");
+  const accessCode = /^idai1\./i.test(compactLicense)
+    ? `IDAI1.${compactLicense.slice(6)}`
+    : compactLicense.toUpperCase();
+
   const enhancedReq = new Request(req.url, {
     method: "POST",
     headers: req.headers,
     body: JSON.stringify({
       ...body,
-      accessCode: licenseCode.trim().toUpperCase(),
+      accessCode,
     }),
   });
 

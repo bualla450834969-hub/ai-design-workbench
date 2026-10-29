@@ -1,18 +1,32 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import AppNavigation, { type TabId } from "@/components/AppNavigation";
+import { useState, useCallback, useEffect, type ReactNode } from "react";
+import type { TabId } from "@/components/AppNavigation";
 import GeneratePanel from "@/components/GeneratePanel";
 import ResultsPanel from "@/components/ResultsPanel";
 import HistoryPanel from "@/components/HistoryPanel";
 import FavoritesPanel from "@/components/FavoritesPanel";
 import SettingsPanel from "@/components/SettingsPanel";
-import LoginPage from "@/components/LoginPage";
-import SplashScreen from "@/components/SplashScreen";
+import TabletActivation from "@/components/tablet/TabletActivation";
+import TabletModelStep from "@/components/tablet/TabletModelStep";
+import TabletProjectStep from "@/components/tablet/TabletProjectStep";
+import TabletShell from "@/components/tablet/TabletShell";
+import TabletBrand from "@/components/tablet/TabletBrand";
+import {
+  clearTabletOnboarding,
+  isTabletOnboarded,
+  loadActiveProjectId,
+  loadProjects,
+  loadWorkflowId,
+  saveWorkflowId,
+  selectProject,
+  type TabletProject,
+} from "@/components/tablet/projects";
 import { ToastProvider } from "@/components/Toast";
-import UpdateNotification from "@/components/UpdateNotification";
-import { getDeviceId, getLicenseCode } from "@/utils";
+import { clearLicenseCode, getDeviceId, getLicenseCode } from "@/utils";
 import type { ResultCard, GenerationState, PendingGenerateConfig, BatchResultGroup } from "@/types";
+
+type Gate = "loading" | "activate" | "model" | "project" | "app";
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabId>("generate");
@@ -28,34 +42,40 @@ export default function HomePage() {
   const [pendingConfig, setPendingConfig] = useState<PendingGenerateConfig>(null);
   const [pendingProductImage, setPendingProductImage] = useState<string | null>(null);
   const [batchResults, setBatchResults] = useState<BatchResultGroup[]>([]);
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [showSplash, setShowSplash] = useState(true);
+  const [gate, setGate] = useState<Gate>("loading");
+  const [projects, setProjects] = useState<TabletProject[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState("");
+  const [workflowId, setWorkflowId] = useState("appearance");
 
-  // 启动时用和服务端相同的 LIHUO / TESTER 目录校验已保存授权码
   useEffect(() => {
     const savedLicense = getLicenseCode();
+    const savedProjects = loadProjects();
+    setProjects(savedProjects);
+    setActiveProjectId(loadActiveProjectId() || savedProjects[0]?.id || "");
+    setWorkflowId(loadWorkflowId());
+
     if (!savedLicense) {
-      setIsCheckingAuth(false);
+      setGate("activate");
       return;
     }
 
     let cancelled = false;
-    const deviceId = getDeviceId();
     fetch("/api/license/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ licenseCode: savedLicense, deviceId }),
+      body: JSON.stringify({ licenseCode: savedLicense, deviceId: getDeviceId() }),
     })
       .then((res) => res.json())
       .then((result) => {
-        if (!cancelled) setIsAuthorized(Boolean(result.valid));
+        if (cancelled) return;
+        if (!result.valid) {
+          setGate("activate");
+          return;
+        }
+        setGate(isTabletOnboarded() && savedProjects.length > 0 ? "app" : "model");
       })
       .catch(() => {
-        if (!cancelled) setIsAuthorized(false);
-      })
-      .finally(() => {
-        if (!cancelled) setIsCheckingAuth(false);
+        if (!cancelled) setGate("activate");
       });
 
     return () => {
@@ -80,99 +100,107 @@ export default function HomePage() {
     setActiveTab("generate");
   }, []);
 
-  // 第一步：显示启动页
-  if (showSplash) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />;
-  }
+  const activeProject = projects.find((project) => project.id === activeProjectId) || projects[0];
 
-  // 正在检查授权状态，显示加载动画
-  if (isCheckingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="text-center">
-          <div className="inline-block w-8 h-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80 mb-3" />
-          <p className="text-sm text-white/50 tracking-wider">正在验证授权...</p>
-        </div>
+  let screen: ReactNode;
+  if (gate === "loading") {
+    screen = (
+      <div className="tablet-loading">
+        <TabletBrand splash />
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
       </div>
     );
-  }
-
-  // 第二步：未授权，显示登录页
-  if (!isAuthorized) {
-    return (
-      <ToastProvider>
-        <LoginPage onAuthorized={() => setIsAuthorized(true)} />
-      </ToastProvider>
+  } else if (gate === "activate") {
+    screen = <TabletActivation onActivated={() => setGate("model")} />;
+  } else if (gate === "model") {
+    screen = <TabletModelStep onContinue={() => setGate("project")} onSkip={() => setGate("project")} />;
+  } else if (gate === "project") {
+    screen = (
+      <TabletProjectStep
+        onCreated={() => {
+          const next = loadProjects();
+          setProjects(next);
+          setActiveProjectId(loadActiveProjectId() || next[0]?.id || "");
+          setGate("app");
+        }}
+      />
+    );
+  } else {
+    screen = (
+      <TabletShell
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        workflowId={workflowId}
+        onWorkflow={(id) => {
+          setWorkflowId(id);
+          saveWorkflowId(id);
+        }}
+        projects={projects}
+        activeProjectId={activeProject?.id || ""}
+        onProjectsChange={(next, activeId) => {
+          setProjects(next);
+          setActiveProjectId(activeId);
+          selectProject(activeId);
+        }}
+        onOpenSettings={() => setActiveTab("settings")}
+        onLogout={() => {
+          clearLicenseCode();
+          clearTabletOnboarding();
+          setGate("activate");
+        }}
+      >
+        <div className={activeTab === "generate" ? "animate-fade-in-up" : "hidden"}>
+          <GeneratePanel
+            generation={generation}
+            setGeneration={setGeneration}
+            onComplete={handleGenerationComplete}
+            onBatchComplete={handleBatchComplete}
+            pendingConfig={pendingConfig}
+            onConfigApplied={() => setPendingConfig(null)}
+            pendingProductImage={pendingProductImage}
+            onProductImageApplied={() => setPendingProductImage(null)}
+            workflowId={workflowId}
+            projectId={activeProject?.id}
+            projectName={activeProject?.name}
+          />
+        </div>
+        <div className={activeTab === "results" ? "animate-fade-in-up" : "hidden"}>
+          <ResultsPanel
+            cards={generation.cards}
+            batchGroups={batchResults}
+            isGenerating={generation.isGenerating}
+            context={generation.context}
+            onUseAsOriginal={handleUseAsOriginal}
+          />
+        </div>
+        <div className={activeTab === "history" ? "animate-fade-in-up" : "hidden"}>
+          <HistoryPanel
+            visible={activeTab === "history"}
+            onReuseConfig={(config) => {
+              setPendingConfig(config);
+              setActiveTab("generate");
+            }}
+            onUseAsOriginal={handleUseAsOriginal}
+          />
+        </div>
+        <div className={activeTab === "favorites" ? "animate-fade-in-up" : "hidden"}>
+          <FavoritesPanel
+            visible={activeTab === "favorites"}
+            onUseAsOriginal={handleUseAsOriginal}
+          />
+        </div>
+        <div className={activeTab === "settings" ? "animate-fade-in-up" : "hidden"}>
+          <SettingsPanel />
+        </div>
+      </TabletShell>
     );
   }
 
-  // 第三步：已授权，显示主界面
   return (
     <ToastProvider>
-    <div className="min-h-screen">
-      <AppNavigation activeTab={activeTab} onTabChange={setActiveTab} />
-
-      <main className="pb-24 lg:pl-72">
-        {/* 移动端顶部 Header - 毛玻璃 */}
-        <header className="sticky top-0 z-40 lg:hidden">
-          <div className="mx-3 mt-3 rounded-2xl bg-white/[0.06] backdrop-blur-2xl border border-white/10 shadow-md">
-            <div className="flex h-12 items-center justify-center px-4">
-              <h1 className="text-base font-semibold text-white">
-                {activeTab === "generate" && "新建生成"}
-                {activeTab === "results" && "生成结果"}
-                {activeTab === "history" && "历史记录"}
-                {activeTab === "favorites" && "我的收藏"}
-                {activeTab === "settings" && "设置"}
-              </h1>
-            </div>
-          </div>
-        </header>
-
-        <div className="mx-auto max-w-3xl px-4 py-5 lg:max-w-5xl lg:py-8 lg:pr-8">
-          {/* 始终挂载所有面板，用 CSS 控制显示/隐藏，避免切换页面时状态丢失 */}
-          <div className={activeTab === "generate" ? "animate-fade-in-up" : "hidden"}>
-            <GeneratePanel
-              generation={generation}
-              setGeneration={setGeneration}
-              onComplete={handleGenerationComplete}
-              onBatchComplete={handleBatchComplete}
-              pendingConfig={pendingConfig}
-              onConfigApplied={() => setPendingConfig(null)}
-              pendingProductImage={pendingProductImage}
-              onProductImageApplied={() => setPendingProductImage(null)}
-            />
-          </div>
-          <div className={activeTab === "results" ? "animate-fade-in-up" : "hidden"}>
-            <ResultsPanel
-              cards={generation.cards}
-              batchGroups={batchResults}
-              isGenerating={generation.isGenerating}
-              context={generation.context}
-              onUseAsOriginal={handleUseAsOriginal}
-            />
-          </div>
-          <div className={activeTab === "history" ? "animate-fade-in-up" : "hidden"}>
-            <HistoryPanel
-              visible={activeTab === "history"}
-              onReuseConfig={(config) => {
-                setPendingConfig(config);
-                setActiveTab("generate");
-              }}
-              onUseAsOriginal={handleUseAsOriginal}
-            />
-          </div>
-          <div className={activeTab === "favorites" ? "animate-fade-in-up" : "hidden"}>
-            <FavoritesPanel 
-              visible={activeTab === "favorites"} 
-              onUseAsOriginal={handleUseAsOriginal}
-            />
-          </div>
-          <div className={activeTab === "settings" ? "animate-fade-in-up" : "hidden"}>
-            <SettingsPanel />
-          </div>
-        </div>
-      </main>
-    </div>
+      <div className="tablet-root">{screen}</div>
     </ToastProvider>
   );
 }

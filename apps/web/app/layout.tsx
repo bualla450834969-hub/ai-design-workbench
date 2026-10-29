@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./tablet.css";
 
 export const metadata: Metadata = {
-  title: "AI 产品外观重构工作台",
-  description: "基于 AI 的产品外观设计重构工具，支持造型突破、配色材质、局部改款",
+  title: "工业设计智能体 · INDUSTRIAL AI",
+  description: "从外观改款到渲染、精修与多视图的一站式产品外观设计工作台",
 };
 
 export const viewport: Viewport = {
@@ -20,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{

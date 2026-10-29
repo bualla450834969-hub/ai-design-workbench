@@ -30,6 +30,7 @@ import { isAutoSaveEnabled, saveResultsToDirectory } from "@/utils/file-save";
 import LocalEditMask from "@/components/LocalEditMask";
 import { compositeLocalEdit } from "@/utils/local-edit-composite";
 import { useToast } from "@/components/Toast";
+import { findWorkflow } from "@/components/tablet/workflows";
 
 const MIN_GENERATE_COUNT = 1;
 const MAX_GENERATE_COUNT = 100;
@@ -48,6 +49,9 @@ export default function GeneratePanel({
   onConfigApplied,
   pendingProductImage,
   onProductImageApplied,
+  workflowId,
+  projectName,
+  projectId,
 }: {
   generation: GenerationState;
   setGeneration: React.Dispatch<React.SetStateAction<GenerationState>>;
@@ -57,6 +61,9 @@ export default function GeneratePanel({
   onConfigApplied: () => void;
   pendingProductImage?: string | null;
   onProductImageApplied?: () => void;
+  workflowId?: string;
+  projectName?: string;
+  projectId?: string;
 }) {
   const [productName, setProductName] = useState("");
   const [variation, setVariation] = useState(65);
@@ -107,6 +114,22 @@ export default function GeneratePanel({
   useEffect(() => {
     setCountDraft(String(count));
   }, [count]);
+
+  useEffect(() => {
+    if (!workflowId) return;
+    const workflow = findWorkflow(workflowId);
+    setApplicationMode(workflow.applicationMode);
+    setTemplateId(workflow.templateId);
+    setLocalEditEnabled(workflow.localEdit);
+    if (!workflow.localEdit) {
+      setEditRegionMask(null);
+      setEditRegionGuide(null);
+    }
+  }, [workflowId]);
+
+  useEffect(() => {
+    if (projectName) setProductName(projectName);
+  }, [projectId, projectName]);
 
   // 处理"以此为原图"功能：从历史/结果页跳转过来时自动加载图片
   useEffect(() => {
@@ -848,7 +871,7 @@ export default function GeneratePanel({
             </label>
           </div>
 
-          {localEditEnabled && (
+          {localEditEnabled && productImages[0] && (
             <div className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-white/70">修改类型</label>
