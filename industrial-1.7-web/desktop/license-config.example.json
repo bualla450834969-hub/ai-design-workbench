@@ -1,0 +1,5 @@
+{
+  "licenseServerUrl": "https://your-license-server.example.com",
+  "updateManifestUrl": "https://downloads.example.com/industrial-design-agent/manifest.json",
+  "runtimeConfigUrl": "https://downloads.example.com/industrial-design-agent/runtime-config.json"
+}

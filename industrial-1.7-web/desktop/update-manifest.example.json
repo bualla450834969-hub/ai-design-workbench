@@ -1,0 +1,14 @@
+{
+  "product": "industrial-design-agent",
+  "publishedAt": "2026-09-14T00:00:00.000Z",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "channel": "stable",
+      "url": "https://your-download-domain/updates/industrial-design-agent/Industrial-Design-Agent-Setup-1.0.0-x64.exe",
+      "sha256": "replace-with-release-sha256",
+      "signature": "replace-with-ed25519-signature",
+      "releaseNotes": "安装版更新示例"
+    }
+  ]
+}

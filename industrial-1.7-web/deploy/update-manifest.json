@@ -1,0 +1,33 @@
+{
+  "product": "industrial-design-agent",
+  "publishedAt": "2026-10-17T18:19:38.703Z",
+  "versions": [
+    {
+      "version": "1.6.6",
+      "channel": "stable",
+      "platform": "win32",
+      "arch": "x64",
+      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/Industrial-Design-Agent-Setup-1.6.6-x64.exe",
+      "sha256": "2b5f43aaac41f0579b919f774e6a74a1b3e4f80fd21f9333943a3bd26bf70c99",
+      "releaseNotes": "工业设计智能体 1.6.6 Windows 补丁\n\n修复 AI 整理需求时附加通用结构模板和无关三轮车示例的问题。整理结果使用自然语言，仅保留与当前产品相关的要求；生成数量和每图方案数继续按当前设置执行。\n\n修复重复整理及复用旧要求时模板再次带入的问题，保留用户正常填写的设计要求。\n\n通过软件内置更新升级，可后台下载并在安全退出时静默覆盖安装；保留本机项目、图片、模型设置和授权。"
+    },
+    {
+      "version": "1.6.6",
+      "channel": "stable",
+      "platform": "macos",
+      "arch": "arm64",
+      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/mac/arm64/Industrial-Design-Agent-1.6.6-mac-arm64.dmg",
+      "sha256": "ccda5226cb9906e3b0cb790269a7e71b3049d8a64d5a17c08206b1d882336add",
+      "releaseNotes": "工业设计智能体 1.6.6 Mac 补丁\n\n适用于 Apple 芯片和 Intel 两种 Mac，通用提示词修复与 Windows 1.6.6 同步。\n\n修复 AI 整理需求时附加通用结构模板和无关三轮车示例的问题。整理结果使用自然语言，仅保留与当前产品相关的要求；生成数量和每图方案数继续按当前设置执行。重复整理或复用旧要求时清理已知旧模板，保留用户正常填写的设计要求。\n\n优化 Mac 系统听写的确认结束操作及图标同步：点击麦克风启动听写，再次点击确认本轮文字并结束；空格确认时同步结束本轮听写，避免重复提交文字。\n\n使用软件内置更新完成升级，保留本机项目、图片、模型设置和授权。"
+    },
+    {
+      "version": "1.6.6",
+      "channel": "stable",
+      "platform": "macos",
+      "arch": "x64",
+      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/mac/x64/Industrial-Design-Agent-1.6.6-mac-x64.dmg",
+      "sha256": "06d158cbc2401d26049f372bed406c7accde59cc540dcf7509efbb9bda7349e8",
+      "releaseNotes": "工业设计智能体 1.6.6 Mac 补丁\n\n适用于 Apple 芯片和 Intel 两种 Mac，通用提示词修复与 Windows 1.6.6 同步。\n\n修复 AI 整理需求时附加通用结构模板和无关三轮车示例的问题。整理结果使用自然语言，仅保留与当前产品相关的要求；生成数量和每图方案数继续按当前设置执行。重复整理或复用旧要求时清理已知旧模板，保留用户正常填写的设计要求。\n\n优化 Mac 系统听写的确认结束操作及图标同步：点击麦克风启动听写，再次点击确认本轮文字并结束；空格确认时同步结束本轮听写，避免重复提交文字。\n\n使用软件内置更新完成升级，保留本机项目、图片、模型设置和授权。"
+    }
+  ]
+}

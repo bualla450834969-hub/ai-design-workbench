@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>工业设计智能体 · INDUSTRIAL AI</title>
+  <link rel="stylesheet" href="activation.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <b class="mark">ID</b><span><strong>工业设计智能体</strong><small>INDUSTRIAL AI</small></span>
+    </div>
+    <span class="count">1 / 3</span>
+  </header>
+
+  <main>
+    <section class="intro">
+      <span class="eyebrow">首次使用</span>
+      <h1>欢迎，输入授权码即可开始</h1>
+      <p>接下来连接模型并创建第一个项目，三步即可开始。</p>
+      <ol><li class="active"><i>1</i><span><strong>激活软件</strong><small>粘贴授权码</small></span></li><li><i>2</i><span><strong>连接模型</strong><small>使用自己的 API Key</small></span></li><li><i>3</i><span><strong>创建项目</strong><small>从空白工作台开始</small></span></li></ol>
+    </section>
+
+    <section class="card">
+      <label><span>授权码</span><textarea id="code" autocomplete="off" spellcheck="false" placeholder="粘贴授权码"></textarea></label>
+      <button id="paste" type="button">从剪贴板粘贴授权码</button>
+      <div id="error"></div>
+      <button id="activate"><span>激活并继续</span><b>→</b></button>
+      <small class="privacy">粘贴授权码即可激活，无需导出或提交任何文件。项目资料仅保存在这台电脑，激活时仅向授权服务器发送本机随机标识，用于校验授权码可用台数。</small>
+    </section>
+  </main>
+
+  <script>
+    const button = document.getElementById('activate');
+    const codeInput = document.getElementById('code');
+    const pasteButton = document.getElementById('paste');
+    const error = document.getElementById('error');
+    async function activate() {
+      if (button.disabled) return;
+      error.textContent = '';
+      if (!codeInput.value.trim()) { error.textContent = '请粘贴授权码'; codeInput.focus(); return; }
+      button.disabled = true;
+      button.querySelector('span').textContent = '正在验证…';
+      try { await window.desktopAPI.activateLicense({ code: codeInput.value }); }
+      catch (cause) { error.textContent = cause?.message || '激活失败，请检查授权码'; button.disabled = false; button.querySelector('span').textContent = '激活并继续'; }
+    }
+    button.addEventListener('click', activate);
+    pasteButton.addEventListener('click', async () => {
+      error.textContent = '';
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text.trim()) throw new Error('剪贴板中没有文本');
+        codeInput.value = text.trim();
+        codeInput.focus();
+      } catch (cause) {
+        codeInput.focus();
+        error.textContent = cause?.message || '读取剪贴板失败，请在输入框中按 Ctrl+V';
+      }
+    });
+    codeInput.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); activate(); } });
+    codeInput.focus();
+  </script>
+</body>
+</html>

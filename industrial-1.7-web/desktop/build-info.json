@@ -1,0 +1,6 @@
+{
+  "edition": "industrial-design-agent",
+  "stage": "stable",
+  "resetDataOnFirstLaunch": false,
+  "dataResetId": "preserve-user-data-1.1.0-20260920"
+}

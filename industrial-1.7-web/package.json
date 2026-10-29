@@ -1,0 +1,29 @@
+{
+  "name": "industrial-design-agent",
+  "version": "1.7.0",
+  "private": true,
+  "description": "工业设计智能体 1.7 本地网页版。独立于 LIHUO / ai-workbench。",
+  "scripts": {
+    "dev": "next dev -p 3002 -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start -p 3002 -H 0.0.0.0",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.11.3",
+    "drizzle-orm": "0.45.2",
+    "lucide-react": "^0.468.0",
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "sharp": "0.35.5",
+    "undici": "7.30.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "5.9.3"
+  }
+}
