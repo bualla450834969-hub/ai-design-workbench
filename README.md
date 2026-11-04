@@ -63,7 +63,7 @@ cp .env.example apps/web/.env.local
 npm run dev
 ```
 
-访问 http://localhost:3000
+访问 http://localhost:3001
 
 ### 生产构建
 
