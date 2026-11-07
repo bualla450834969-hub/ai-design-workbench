@@ -5,6 +5,7 @@ import { activeImageModel, generateImages, generateText } from "@/lib/providers/
 import { activeProviderSettings } from "@/lib/providers/geekai";
 import { BOARD_ITEM_OPTIONS, boardPrompt, normalizeNaturalBoardItemCount, type BoardItemCount } from "@/lib/generation-board";
 import { stripGeneratedPromptBoilerplate } from "@/lib/product-identity";
+import { formatFreeChatHistory, normalizeFreeChatMemory } from "@/lib/free-chat-memory";
 import type { DesignPlan, ProviderContext } from "@/lib/providers/types";
 import { prepareAssetContext } from "@/lib/services/asset-context";
 import { assetRoleLabel, sortAssetsByRole } from "@/lib/services/asset-roles";
@@ -33,7 +34,7 @@ export type FreeChatPlan = {
 };
 
 const FREE_CHAT_PLANNER_SYSTEM = `你是工业设计自由对话任务路由器。只依据当前自由对话历史、本轮用户指令和本轮附件，不得使用项目名称、参数面板、重构滑杆或预设设计方向。
-只返回严格 JSON：{"action":"answer|generate|edit|local-edit|multi-view|cmf|scene|detail","count":1,"resolution":"1K","aspectRatio":"auto","instructions":"","preserve":[],"change":[],"views":[],"needsClarification":false,"response":"","variantDirections":[],"boardItems":1}。
+只返回严格 JSON：{"action":"answer|generate|edit|local-edit|multi-view|cmf|scene|detail","count":1,"resolution":"1K","aspectRatio":"auto","instructions":"","preserve":[],"change":[],"views":[],"needsClarification":false,"response":"","variantDirections":[],"boardItems":1,"memory":""}。
 规则：
 1. 分析、解释、建议、询问类用 answer，并在 response 中直接回答。
 2. count 只表示最终输出图片张数。用户没有明确写出“N张图/图片/效果图/结果”时 count 必须为1，最多100。“N个方案/N种配色/六视图/八视图”都描述一张图里的内容，不等于图片张数；只有明确要求“每个角度或每种配色单独一张”时，才按对应数量输出。
@@ -44,7 +45,8 @@ const FREE_CHAT_PLANNER_SYSTEM = `你是工业设计自由对话任务路由器�
 7. 必须忠实保留用户写明的数量、角度、局部位置、保留项和禁止项，不得擅自扩大改动范围。
 8. 原图已有三/四/五/六/八视图时，“保留原视图、只改贴花/涂装/颜色/图案”是 cmf 表面编辑，不是 multi-view，也不是外观重设计。${SURFACE_ONLY_CONSTRAINT}
 9. 只有用户要求新角度时才创建 multi-view。六视图和八视图分别是一张3×2和4×2整版，未指定分辨率时4K；明确每个角度单独一张时分别count=6或8，未指定分辨率时1K。六视图为正、后、左、右、顶、底，八视图追加左前45°、右前45°；不得输出重复拼版。
-10. 附件中的“参考绘画风格”只用于画面表现，不当作产品造型参考。${DRAWING_STYLE_REFERENCE_CONSTRAINT}`;
+10. 附件中的“参考绘画风格”只用于画面表现，不当作产品造型参考。${DRAWING_STYLE_REFERENCE_CONSTRAINT}
+11. memory 是项目自由对话的长期设计设定，合并已有记忆和本轮用户明确确认的品类、结构、尺寸、材质、保留项与禁改项；不记录模型猜测、临时出图数量、未确认方案、旧图片像素、密钥、授权码或联系方式，最多1800字。若本轮无持久新设定，原样返回已有记忆。本轮用户要求优先于旧记忆。`;
 
 const FREE_CHAT_ENHANCER_SYSTEM = `你是工业设计提示词编辑助手。结合用户当前草稿、当前附件摘要和自由对话上下文，把要求整理为一段清晰、简洁、可编辑的中文指令。必须保留数量、角度、指定局部、必须保留项、禁止项、分辨率和画幅；不得添加用户没有要求的产品、品牌、结构或参数。附件数量和编号只能以“当前附件”清单为准，不得臆造清单中不存在的附件；标注图及其生成所需的干净原图属于同一个用户附件。只补充当前目标产品实际具有且能够确认的必要结构，不罗列其他品类部件，不从风格参考猜测部件数量或结构。用户明确改变某项结构时按要求执行，只解除该项约束。不要复制内部模板、通用核对清单或无关产品示例；保持文案简洁。只返回严格 JSON：{"prompt":""}。不要自动执行任务。`;
 
@@ -121,11 +123,7 @@ export function fallbackPlan(content: string, assets: Asset[], requestedResoluti
 }
 
 function freeHistory(userId: string, projectId: string) {
-  return store.listMessages(userId, projectId)
-    .filter((message) => message.agentId === "free-chat" && (message.role === "user" || message.role === "assistant"))
-    .slice(-12)
-    .map((message) => `${message.role === "user" ? "用户" : "助手"}：${stripGeneratedPromptBoilerplate(message.content).replace(/\s+/g, " ").slice(0, 1200)}`)
-    .join("\n");
+  return formatFreeChatHistory(store.listMessages(userId, projectId));
 }
 
 export function logicalFreeChatAttachments(assets: Asset[]) {
@@ -194,17 +192,17 @@ export function selectFreeChatMessageAssets(jobAssets: Asset[], selectedIds: str
   });
 }
 
-export async function planFreeChat(input: { content: string; assets: Asset[]; history: string; context: ProviderContext; resolution?: FreeChatPlan["resolution"]; aspectRatio?: FreeChatPlan["aspectRatio"]; boardItems?: number; attachmentManifest?: string; providerImageManifest?: string }) {
+export async function planFreeChat(input: { content: string; assets: Asset[]; history: string; memory?: string; context: ProviderContext; resolution?: FreeChatPlan["resolution"]; aspectRatio?: FreeChatPlan["aspectRatio"]; boardItems?: number; attachmentManifest?: string; providerImageManifest?: string }) {
   input = { ...input, content: stripGeneratedPromptBoilerplate(input.content), history: stripGeneratedPromptBoilerplate(input.history) };
   let output;
   try {
     output = await generateText({
       ...input.context,
       systemPrompt: FREE_CHAT_PLANNER_SYSTEM,
-      userPrompt: `自由对话历史：\n${input.history || "这是第一轮"}\n\n本轮附件：\n${input.attachmentManifest || assetManifest(input.assets)}\n\n模型实际收到的图片与附件对应关系（只用于识别，不得改写附件编号）：\n${input.providerImageManifest || freeChatProviderImageManifest(input.assets)}\n\n本轮用户指令：\n${input.content}`,
+      userPrompt: `已确认的项目记忆（仅为文字设定，不代表旧图片本体；本轮要求优先）：\n${normalizeFreeChatMemory(input.memory) || "暂无"}\n\n自由对话历史：\n${input.history || "这是第一轮"}\n\n本轮附件：\n${input.attachmentManifest || assetManifest(input.assets)}\n\n模型实际收到的图片与附件对应关系（只用于识别，不得改写附件编号）：\n${input.providerImageManifest || freeChatProviderImageManifest(input.assets)}\n\n本轮用户指令：\n${input.content}`,
       settings: { task: "free-chat-routing" },
     });
-  } catch { return { plan: fallbackPlan(input.content, input.assets, input.resolution, input.aspectRatio, input.boardItems), textModel: "rule-based" }; }
+  } catch { return { plan: fallbackPlan(input.content, input.assets, input.resolution, input.aspectRatio, input.boardItems), textModel: "rule-based", memory: "" }; }
   const parsed = jsonObject(output.text) as Record<string, unknown>;
   const allowedActions = new Set(["answer", "generate", "edit", "local-edit", "multi-view", "cmf", "scene", "detail"]);
   const fallback = fallbackPlan(input.content, input.assets, input.resolution, input.aspectRatio, input.boardItems);
@@ -235,7 +233,7 @@ export async function planFreeChat(input: { content: string; assets: Asset[]; hi
     variantDirections: Array.from({ length: count }, (_, index) => surfaceOnly ? fallback.variantDirections[index] : action === "multi-view" ? views[index] || fallback.views[index] || `环绕视角 ${Math.round(index * 360 / count)}°` : suppliedDirections[index] || `方案 ${index + 1}：独立设计路线`),
     boardItems: naturalBoardItemCount(action, input.content, input.boardItems, parsed.boardItems),
   };
-  return { plan, textModel: output.model };
+  return { plan, textModel: output.model, memory: normalizeFreeChatMemory(parsed.memory) };
 }
 
 export async function enhanceFreeChatPrompt(input: { userId: string; projectId: string; content: string; assets: Asset[] }) {
@@ -245,7 +243,7 @@ export async function enhanceFreeChatPrompt(input: { userId: string; projectId: 
   const output = await generateText({
     agentId: "free-chat",
     systemPrompt: FREE_CHAT_ENHANCER_SYSTEM,
-    userPrompt: `自由对话历史：\n${freeHistory(input.userId, input.projectId) || "这是第一轮"}\n\n当前附件（以下编号是唯一有效编号）：\n${assetManifest(input.assets)}\n\n模型实际收到的图片与附件对应关系（只用于识别，不得写入整理结果）：\n${freeChatProviderImageManifest(ordered, input.assets)}\n${prepared.documentContext ? `\n资料摘录：\n${prepared.documentContext.slice(0, 6000)}` : ""}\n\n当前草稿：\n${input.content || "请根据附件整理一条可执行的工业设计要求"}`,
+    userPrompt: `已确认的项目记忆（只作背景，本轮要求优先）：\n${normalizeFreeChatMemory(store.assertProject(input.userId, input.projectId).freeChatMemory) || "暂无"}\n\n自由对话历史：\n${freeHistory(input.userId, input.projectId) || "这是第一轮"}\n\n当前附件（以下编号是唯一有效编号）：\n${assetManifest(input.assets)}\n\n模型实际收到的图片与附件对应关系（只用于识别，不得写入整理结果）：\n${freeChatProviderImageManifest(ordered, input.assets)}\n${prepared.documentContext ? `\n资料摘录：\n${prepared.documentContext.slice(0, 6000)}` : ""}\n\n当前草稿：\n${input.content || "请根据附件整理一条可执行的工业设计要求"}`,
     assets: prepared.providerAssets,
     settings: { task: "free-chat-prompt-enhancement" },
   });
@@ -254,7 +252,7 @@ export async function enhanceFreeChatPrompt(input: { userId: string; projectId: 
   return { prompt, provider: output.provider, model: output.model };
 }
 
-export async function runFreeChatJob(input: { userId: string; projectId: string; content: string; assets: Asset[]; selectedAssetIds: string[]; idempotencyKey: string; jobId?: string; resolution?: FreeChatPlan["resolution"]; aspectRatio?: FreeChatPlan["aspectRatio"]; boardItems?: number; showDimensions?: boolean }) {
+export async function runFreeChatJob(input: { userId: string; projectId: string; content: string; assets: Asset[]; selectedAssetIds: string[]; idempotencyKey: string; jobId?: string; resolution?: FreeChatPlan["resolution"]; aspectRatio?: FreeChatPlan["aspectRatio"]; boardItems?: number; showDimensions?: boolean; transparentBackground?: boolean }) {
   input = { ...input, content: stripGeneratedPromptBoilerplate(input.content) };
   const logicalOrderAssets = input.assets;
   const attachmentManifest = assetManifest(logicalOrderAssets);
@@ -264,6 +262,7 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
   const { job, created } = store.createJob({ userId: input.userId, projectId: input.projectId, agentId: "free-chat", prompt: input.content, assets: input.assets, selectedAssetIds: input.selectedAssetIds, idempotencyKey: input.idempotencyKey, jobId: input.jobId });
   if (!created && (!input.jobId || job.id !== input.jobId)) return { job, created };
   const history = freeHistory(input.userId, input.projectId);
+  const memoryBefore = normalizeFreeChatMemory(store.assertProject(input.userId, input.projectId).freeChatMemory);
   const now = new Date().toISOString();
   store.addMessage(input.userId, { id: crypto.randomUUID(), jobId: job.id, projectId: input.projectId, role: "user", content: input.content, agentId: "free-chat", assets: selectFreeChatMessageAssets(input.assets, input.selectedAssetIds), createdAt: now });
   store.updateJob(job.id, { status: "running", progress: 7, stage: "analyzing", stageLabel: "正在理解自然语言和附件" });
@@ -271,12 +270,14 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
   try {
     const prepared = await prepareAssetContext(input.assets);
     const baseContext: ProviderContext = { agentId: "free-chat", systemPrompt: getAgent("free-chat").systemPrompt, userPrompt: input.content, assets: prepared.providerAssets, signal: cancelSignal };
-    const { plan, textModel } = await planFreeChat({ content: input.content, assets: input.assets, history, context: baseContext, resolution: input.resolution, aspectRatio: input.aspectRatio, boardItems: input.boardItems, attachmentManifest, providerImageManifest });
+    const { plan, textModel, memory } = await planFreeChat({ content: input.content, assets: input.assets, history, memory: memoryBefore, context: baseContext, resolution: input.resolution, aspectRatio: input.aspectRatio, boardItems: input.boardItems, attachmentManifest, providerImageManifest });
     if (plan.needsClarification || plan.action === "answer") {
       const content = plan.response || "请补充一下希望修改的具体位置或最终交付形式。";
       const message: Message = { id: crypto.randomUUID(), jobId: job.id, projectId: input.projectId, role: "assistant", content, agentId: "free-chat", createdAt: new Date().toISOString() };
       store.addMessage(input.userId, message);
       store.updateJob(job.id, { status: "succeeded", progress: 100, stage: "completed", stageLabel: "已完成", completedOutputs: 0, totalOutputs: 0 });
+      try { store.updateFreeChatMemoryIfUnchanged(input.userId, input.projectId, memoryBefore, memory); }
+      catch (error) { console.warn("自由对话记忆保存失败", error); }
       return { job: store.getJob(input.userId, job.id), message, created };
     }
     const timeoutMs = Math.min(90 * 60_000, Math.max(10 * 60_000, 4 * 60_000 + Math.ceil(plan.count / 4) * 4 * 60_000));
@@ -292,6 +293,7 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
       "你正在执行独立的 AI 自由对话任务。唯一依据是本自由对话历史、本轮附件和本轮指令；不得引用参数设计模块、项目名称、重构滑杆或预设模板。",
       `本轮动作：${plan.action}`,
       `本轮附件与参考维度：\n${attachmentManifest}`,
+      memoryBefore ? `已确认的项目记忆（只作文字设定；本轮指令优先，旧图片仍须本轮选中）：\n${memoryBefore}` : "",
       `模型实际收到的图片与用户附件对应关系：\n${providerImageManifest}`,
       `用户原始指令：${input.content}`,
       `整理后的执行要求：${plan.instructions}`,
@@ -318,7 +320,7 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
     ].filter(Boolean).join("\n\n");
     const imageContext: ProviderContext = {
       ...baseContext, signal, userPrompt: prompt, designPlan,
-      settings: { outputCount: plan.count, boardItems: plan.boardItems, resolution: plan.resolution, aspectRatio: plan.aspectRatio, generationMode: "free-chat", userRequirements: input.content, surfaceOnly: plan.action === "cmf", freeChatAction: plan.action, freeChatViews: plan.views.join("|"), freeChatViewCount: requestedStandardViewCount(input.content, plan.count), freeChatMultiViewBoard: plan.action === "multi-view" && plan.count === 1 && plan.views.some((view) => /整版/.test(view)), ...(input.showDimensions !== undefined ? { showDimensions: input.showDimensions } : {}), freeChatBoardItems: plan.boardItems, freeChatBoardKind: plan.action === "cmf" ? "cmf" : plan.boardItems > 1 ? "variants" : "single" },
+      settings: { outputCount: plan.count, boardItems: plan.boardItems, resolution: plan.resolution, aspectRatio: plan.aspectRatio, generationMode: "free-chat", userRequirements: input.content, surfaceOnly: plan.action === "cmf", freeChatAction: plan.action, freeChatViews: plan.views.join("|"), freeChatViewCount: requestedStandardViewCount(input.content, plan.count), freeChatMultiViewBoard: plan.action === "multi-view" && plan.count === 1 && plan.views.some((view) => /整版/.test(view)), ...(input.showDimensions !== undefined ? { showDimensions: input.showDimensions } : {}), transparentBackground: input.transparentBackground === true, freeChatBoardItems: plan.boardItems, freeChatBoardKind: plan.action === "cmf" ? "cmf" : plan.boardItems > 1 ? "variants" : "single" },
       onProgress: (event) => {
         completed = event.completed ?? completed;
         store.updateJob(job.id, { progress: Math.min(88, 24 + Math.round(62 * completed / Math.max(1, plan.count))), stage: event.stage, stageLabel: event.label, completedOutputs: completed, totalOutputs: plan.count });
@@ -329,11 +331,12 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
     if (!image.imageUrls.length) throw new Error("图片模型没有返回可用结果");
     store.updateJob(job.id, { progress: 91, stage: "saving", stageLabel: "正在逐张保存结果" });
     const persisted = await persistGeneratedImages({
-      userId: input.userId, projectId: input.projectId, jobId: job.id, imageUrls: image.imageUrls, resolution: plan.resolution,
+      userId: input.userId, projectId: input.projectId, jobId: job.id, imageUrls: image.imageUrls, resolution: plan.resolution, transparentBackground: input.transparentBackground === true,
       ...(["cmf", "edit", "generate"].includes(plan.action) && input.assets.find((asset) => asset.role === "structure" || asset.role === "result")
         ? { noveltyReference: input.assets.find((asset) => asset.role === "structure" || asset.role === "result")! } : {}),
       ...(plan.action === "multi-view" && image.variants?.length ? { labels: image.variants.map((variant) => variant.designRoute) } : {}),
     });
+    if (input.transparentBackground && persisted.errors.length) throw new Error(`透明背景结果未通过验证或保存失败：${persisted.errors.map((item) => item.message).join("；")}。原始图片已尽量保存到项目；供应商可能已计费，请先核对任务和账单，再考虑重试。`);
     const completedAt = new Date().toISOString();
     const billing = estimateGenerationCost({ textModel, imageModel: image.model || activeImageModel(), count: image.imageUrls.length, includeText: true, providerType: activeProviderSettings().type });
     const notes = [];
@@ -341,7 +344,7 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
     if (persisted.errors.length) notes.push(`${persisted.errors.length} 张${process.env.WEB_MODE === "true" ? "服务器" : "本地"}保存失败，供应商原始结果仍可查看`);
     if (persisted.unchangedCount) notes.push(`${persisted.unchangedCount} 张与上传原图高度相似，已标记供检查；不会自动再次扣费生图`);
     const result: GenerationResult = {
-      requestSnapshot: { endpoint: "/api/free-chat", content: input.content, assetIds: input.selectedAssetIds, resolution: input.resolution, aspectRatio: input.aspectRatio, boardItems: normalizeNaturalBoardItemCount(plan.boardItems), showDimensions: input.showDimensions },
+      requestSnapshot: { endpoint: "/api/free-chat", content: input.content, assetIds: input.selectedAssetIds, resolution: input.resolution, aspectRatio: input.aspectRatio, boardItems: normalizeNaturalBoardItemCount(plan.boardItems), showDimensions: input.showDimensions, transparentBackground: input.transparentBackground },
       jobId: job.id, status: "succeeded", imageUrls: persisted.imageUrls, imageAssets: persisted.assets,
       provider: image.provider, model: image.model, prompt: image.revisedPrompt || prompt, note: notes.length ? notes.join("；") : undefined,
       direction: `自由对话 · ${plan.action}`, requestedCount: plan.count, deliveredCount: image.imageUrls.length, savedCount: persisted.savedCount,
@@ -354,6 +357,8 @@ export async function runFreeChatJob(input: { userId: string; projectId: string;
     const message: Message = { id: crypto.randomUUID(), jobId: job.id, projectId: input.projectId, role: "assistant", content: `已按自然语言要求生成 ${image.imageUrls.length} 张结果${plan.boardItems > 1 ? `，每张包含 ${plan.boardItems} 个方案` : ""}，其中 ${persisted.savedCount} 张已保存到${projectStorageLocation()}。${persisted.errors.length ? "未保存的结果依赖供应商临时链接，请及时下载并检查保存失败提示。" : ""}`, agentId: "free-chat", generation: result, createdAt: completedAt };
     store.addMessage(input.userId, message);
     store.updateJob(job.id, { status: "succeeded", progress: 100, stage: "completed", stageLabel: "已完成", completedOutputs: image.imageUrls.length, totalOutputs: plan.count, result });
+    try { store.updateFreeChatMemoryIfUnchanged(input.userId, input.projectId, memoryBefore, memory); }
+    catch (error) { console.warn("自由对话记忆保存失败", error); }
     return { job: store.getJob(input.userId, job.id), message, created };
   } catch (error) {
     const current = store.getJob(input.userId, job.id);

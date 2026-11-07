@@ -115,9 +115,16 @@ describe("project results panel", () => {
     expect(markup).toContain("导出全部 ZIP");
     expect(markup).toContain("导出已选 ZIP");
     expect(markup).toContain("导出收藏 ZIP");
-    expect(markup).toContain("下载图片");
+    expect(markup).toContain("下载原图");
     expect(markup).toContain('aria-label="选择 方案 001.png"');
     expect(markup).toContain('type="checkbox"');
+  });
+
+  it("keeps video and existing transparent asset exports without offering paid transparent regeneration", () => {
+    const markup = panel({ assets: [asset("a"), asset("transparent", { tags: ["透明背景"] })], onWhitePng: vi.fn(), onVideo: vi.fn() });
+    expect(markup).not.toContain("生成透明 PNG");
+    expect(markup).toContain(">白底 PNG</button>");
+    expect(markup).toContain(">生成视频</button>");
   });
 
   it("keeps all export choices available in favorites and disables unavailable choices", () => {

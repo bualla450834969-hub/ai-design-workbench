@@ -38,13 +38,15 @@ export function categoryReferenceDimensions(category: string): ProductDimensions
 }
 
 /** The source fixes geometry and color; orthographic projection only changes the camera. */
-export function sixViewSourceFidelityContract() {
-  return "主产品原图是唯一形态与颜色基准。先锁定原产品外轮廓、真实长宽高相对比例、结构拓扑、分件边界、关键部件的数量与位置、色块分布、主色相与材质，再投影到六个相机方向。绝不把主体横向拉长或纵向压扁，不按通用品类重新造型，不增删原有部件，也不改动原图主色相和色块位置。正交投影允许透视外观变化，但同一产品的物理宽、深、高比例和颜色在六格必须一致；正后宽度一致、左右长度一致、俯底外轮廓互相对应。只对原图确实看不到的面做最保守补全，不臆造复杂机械结构。";
+export function sixViewSourceFidelityContract(includeSixDirections = true) {
+  const source = "主产品原图是唯一形态与颜色基准。先锁定原产品外轮廓、真实长宽高相对比例、结构拓扑、分件边界、关键部件的数量与位置、色块分布、主色相与材质，再按本轮指定相机观察。绝不把主体横向拉长或纵向压扁，不按通用品类重新造型，不增删原有部件，也不改动原图主色相和色块位置。表现形式跟随主产品原图：输入实物照片或写实渲染时，所有输出视图都保持同等写实的产品渲染，保留材质微纹理、金属反射、玻璃透明与厚度、曲面明暗和柔和接触阴影；不得转成平面插画、矢量色块、漫画、线稿或CAD轮廓图。原图为草图时才延续草图风格，用户明确要求转换表现形式时按其要求处理。正交仅约束相机投影，产品仍有真实体积和材质光影；同一产品的物理宽、深、高比例和颜色在各输出视图中保持一致。只对原图确实看不到的面做最保守补全，不臆造复杂机械结构。";
+  const sixDirections = "六个相机分别位于产品正前、正后、自身左侧、自身右侧、正上、正下，朝向同一产品中心，六个方向各出现一次。正后宽度一致、左右长度一致、俯底外轮廓互相对应。左右两格来自相反侧相机，产品前端在两格中应朝画面相反方向，保留各侧真实可见的结构，禁止复制同一侧图后只换标签；真实对称处保持对称，不为区别视图编造部件。顶视显示顶部外表面，底视显示底部外表面，禁止用旋转侧图或翻转顶图代替底视。成图前逐格核对六个方向和标签，不以相近斜视角冒充标准视图。";
+  return source + (includeSixDirections ? sixDirections : "");
 }
 
 /** One axis receives one numeric label across the board. */
 export function sixViewDimensionContract(content: string, options: SixViewDimensionOptions = {}) {
-  if (options.showDimensions === false) return "本轮选择不加尺寸：六格只写视角名称，不绘制任何尺寸线、箭头、比例尺、数字尺寸或测量占位文字；为后续建模保留干净轮廓。";
+  if (options.showDimensions === false) return "本轮选择不加尺寸：六格只写视角名称，不绘制任何尺寸线、箭头、比例尺、数字尺寸或测量占位文字；完整保留主原图的材质、体积和光影表现。";
   const measured = parseProductDimensions(content);
   const size = measured || categoryReferenceDimensions(`${options.category || ""} ${content}`);
   const toMillimeters = (value: string) => Number(value) * (size?.unit === "cm" ? 10 : 1);
@@ -53,5 +55,5 @@ export function sixViewDimensionContract(content: string, options: SixViewDimens
     : size
       ? `以“${options.category || "当前产品"}”的品类常见实体尺度作为参考起点，建议宽×深×高为 ${size.width}×${size.depth}×${size.height} mm。正视与后视标宽 ${size.width} mm、高 ${size.height} mm；左视与右视标深 ${size.depth} mm、高 ${size.height} mm；俯视与底视标宽 ${size.width} mm、深 ${size.depth} mm。先观察原图的长宽高相对比例，若建议值与原图比例明显冲突，应按原图比例调整三个数字并保证六格一致，绝不可拉长、压扁或改色产品来迎合建议值。这些是估计值，不冒充测量结果。`
       : `识别“${options.category || "产品原图对应的品类"}”与原图相对比例，选取该品类合理的一组圆整的宽×深×高毫米估计数值，并把实际数字写进图中。正视与后视均标相同的宽、高数字；左视与右视均标相同的深、高数字；俯视与底视均标相同的宽、深数字。三个轴的数字必须与原图外形比例基本一致，不能为了迎合数字拉伸或改色产品，也不能把照片像素冒充测量结果。`;
-  return `本轮选择加尺寸：六视图须以正投影风格绘制整齐的尺寸界线、箭头和数字尺寸，所有尺寸单位统一为 mm；正/后为宽×高，左/右为深×高，俯/底为宽×深。${labels}每条主要尺寸线旁都必须有可读的毫米数字，不得留空或以文字占位。只在整版顶部写一次“仅供参考”；尺寸线放在各格产品外侧，不遮挡结构；除此之外图片内只有角度名称、尺寸线及数字尺寸，不添加品牌或水印。量产尺寸和公差仍须实物或 CAD 校核。`;
+  return `本轮选择加尺寸：在保持原图表现形式和材质光影的产品视图外侧，叠加整齐的尺寸界线、箭头和数字尺寸，不因标注尺寸把产品改画成平面线稿。所有尺寸单位统一为 mm；正/后为宽×高，左/右为深×高，俯/底为宽×深。${labels}每条主要尺寸线旁都必须有可读的毫米数字，不得留空或以文字占位。只在整版顶部写一次“仅供参考”；尺寸线放在各格产品外侧，不遮挡结构；除此之外图片内只有角度名称、尺寸线及数字尺寸，不添加品牌或水印。量产尺寸和公差仍须实物或 CAD 校核。`;
 }

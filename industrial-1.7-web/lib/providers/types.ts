@@ -9,6 +9,9 @@ export interface DesignPlan {
   styleFingerprint: string[];
   negativeStyleConstraints: string[];
   variantDirections: string[];
+  /** Observed appearance is evidence, not a functional or engineering lock. */
+  appearanceObservations?: string[];
+  controlVersion?: number;
 }
 
 export interface GenerationProgress {
@@ -27,6 +30,8 @@ export interface ProviderContext {
   signal?: AbortSignal;
   designPlan?: DesignPlan;
   onProgress?: (progress: GenerationProgress) => void;
+  onImage?: (image: ImageOutput, index: number) => Promise<void>;
+  onTextAttempt?: () => void;
 }
 
 export interface TextOutput {
@@ -41,7 +46,7 @@ export interface ImageOutput {
   model: string;
   failureSummary?: string;
   revisedPrompt?: string;
-  variants?: Array<{ prompt: string; designRoute: string; seed?: string | number }>;
+  variants?: Array<{ index?: number; prompt: string; designRoute: string; seed?: string | number }>;
 }
 
 export interface TextProvider {

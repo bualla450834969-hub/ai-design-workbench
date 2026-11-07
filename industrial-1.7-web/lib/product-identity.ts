@@ -1,5 +1,8 @@
 import type { DesignPlan } from "@/lib/providers/types";
 
+export const PRODUCT_IMAGE_IDENTITY_RULES = "产品身份依据：有产品原图时，先根据原图确认具体产品、对象范围、核心功能与可见结构，项目名称和项目摘要仅作归档或背景，不得替代图像事实。原图显示部件、组件或总成时，改款对象保持该层级，不能根据宽泛名称自行补成整机、其他附件或另一类产品。用户明确的本轮修改要求决定允许变化的范围；执行方向、重构幅度和参考强度只在此范围内生效，不能覆盖产品身份。设计参考仅贡献被允许的抽象设计语言，不提供目标产品品类、部件数量或结构拓扑。只有设计参考图时，由用户明确文字定义目标产品，再转译参考语言；没有任何图片时，以本轮文字定义产品。";
+export const PRODUCT_IMAGE_IDENTITY_LOCK = "以产品原图可见的具体产品身份与对象范围为改款边界，保持部件、组件、总成或整机层级；不得因项目名称或参考图自行补全、替换为其他对象。";
+
 const IDENTITY_FEATURES = {
   wheel: { label: "轮子与轮组", pattern: /车轮|轮子|轮组|前轮|后轮|三轮|四轮|轮距/ },
   doorsWindows: { label: "门窗", pattern: /门窗|车门|车窗|窗户|侧门|(?:单|双|两|二|三|四|五|六|七|八|九|\d+)(?:扇)?门/ },
@@ -90,8 +93,8 @@ export function productIdentityContract(boardItems = 1, userRequirements = "", c
     : "用户明确要求的结构变化优先，其余已确认结构保持一致。";
   const evidence = context.hasProductImage === false
     ? "仅以本轮目标品类和用户明确要求确定结构；风格参考不提供部件数量或结构证据。"
-    : "只约束用户明确要求及产品原图中可确认的实际结构；看不清的数量不猜测，风格参考不提供结构证据。";
-  const tricycle = targetIsTricycle(context.productCategory || "", userRequirements) && !unlocked.has("wheel")
+    : `只约束用户明确要求及产品原图中可确认的实际结构；看不清的数量不猜测，风格参考不提供结构证据。${context.hasProductImage === true ? PRODUCT_IMAGE_IDENTITY_LOCK : "有产品原图时，以图中实际身份和对象范围为准，项目名称仅作辅助。"}`;
+  const tricycle = !(context.hasProductImage === true && !context.productCategory) && targetIsTricycle(context.productCategory || "", userRequirements) && !unlocked.has("wheel")
     ? "目标为三轮车：每个子方案的实际结构必须恰好3个车轮并保持原始前后轮组布局，不得增轮、少轮、重轮或合并轮；允许正常透视遮挡，不得为了同时露出3轮而增加车轮或改变视角。"
     : "";
   return ["品类核对（仅内部执行，不复制到整理文案）：", unlockRule, evidence, perScheme, tricycle].join("");
@@ -126,6 +129,7 @@ export function enforceProductIdentityPlan(plan: DesignPlan, userRequirements: s
     .map((constraint) => keepLockedConstraintParts(constraint, unlocked))
     .filter(Boolean);
   const constraints = [...filtered];
+  if (context.hasProductImage === true) constraints.push(PRODUCT_IMAGE_IDENTITY_LOCK);
   if (changedFeatures.length) {
     const labels = changedFeatures.map((feature) => IDENTITY_FEATURES[feature].label).join("、");
     constraints.push(`仅按用户要求调整${labels}，不能连带解除其他已确认的结构约束。`);

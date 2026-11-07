@@ -11,7 +11,7 @@ const rolePriority: Record<AssetRole, number> = {
 };
 
 export function assetRoleLabel(role: AssetRole) {
-  if (role === "structure" || role === "result") return "产品原图（决定品类、结构、功能与比例）";
+  if (role === "structure" || role === "result") return "产品原图（确认品类、对象层级、功能与工程事实；外观变化服从当前任务参数）";
   if (role === "style") return "设计参考图（只提供造型语言、配色、材质或风格）";
   if (role === "scene") return "场景参考图（只提供环境、构图与光线）";
   if (role === "annotation") return "局部修改标注图（方框、圆框、箭头、线条和文字用于说明要修改的位置，标记本身不得出现在结果图）";

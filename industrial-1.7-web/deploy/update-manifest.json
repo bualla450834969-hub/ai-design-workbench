@@ -1,33 +1,33 @@
 {
   "product": "industrial-design-agent",
-  "publishedAt": "2026-10-19T17:38:05.419Z",
+  "publishedAt": "2026-10-30T09:26:26.279Z",
   "versions": [
     {
-      "version": "1.7.0",
+      "version": "1.8.2",
       "channel": "stable",
       "platform": "win32",
       "arch": "x64",
-      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/Industrial-Design-Agent-Setup-1.7.0-x64.exe",
-      "sha256": "9647748d61ea39ae2cc05795d22ea58a6c4301d1b085a6e11a6797a8d2b15796",
-      "releaseNotes": "工业设计智能体 1.7.0 Windows\n\n首次使用按“授权激活 → 连接模型 → 创建项目”的顺序进行，保存并启用模型连接后再进入工作台。\n\n修复删除当前项目后无法切换项目的问题；删除前保存草稿，删除后可继续使用其他项目或新建项目。\n\n项目回收站增加保存位置、空间占用、打开文件夹和清空全部；恢复前检查已保存图片，清理失败可重试。\n\n个人设置按常用与详细操作分组，授权、备份和高级说明可展开查看。\n\n优化图片预览、麦克风按钮居中和操作反馈，减少输入及听写时结果区的重复渲染。\n\n通过软件内置更新升级，保留本机项目、图片、授权和模型设置。"
+      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/Industrial-Design-Agent-Setup-1.8.2-x64.exe",
+      "sha256": "2e79e1060210694b61c1c7117312d0698cee0d5ceecfd46cb61997efe23bc7a0",
+      "releaseNotes": "工业设计智能体 1.8.2 Windows\n\n自 1.8.0 以来的更新：\n\n包装设计新增内衬设计方向，可根据产品设计纸板、珍珠棉等缓冲保护方案。\n\n连接模型中明确标注 RelayRouter 需要科学上网，补充 AIHubMix 模型的人民币参考费用，价格缺失时显示型号与软件版本便于排查，并修复 GeekAI 充值入口。gemini-3.1-flash-image-preview 的参考费用约 ¥0.463/次；实际费用以供应商账单为准。\n\n图片模型列表将 Nano Banana 2.1 排在默认推荐型号之后，方便选择。\n\n首次输入授权码时，可查看微信联系方式和微信小店购买海报，扫码联系或购买。模型调用、图片生成及授权校验逻辑保持不变。\n\n覆盖安装保留原有项目、图片、授权和模型设置。"
     },
     {
-      "version": "1.7.0",
+      "version": "1.8.2",
       "channel": "stable",
       "platform": "macos",
       "arch": "arm64",
-      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/mac/arm64/Industrial-Design-Agent-1.7.0-mac-arm64.dmg",
-      "sha256": "f488157568c07746e2f12048cdb1716136135c0dcf2bc28d88e0f7ef598d8122",
-      "releaseNotes": "工业设计智能体 1.7.0 Mac\n\n适用于 Apple 芯片和 Intel 两种 Mac。\n\n首次使用按“授权激活 → 连接模型 → 创建项目”的顺序进行，保存并启用模型连接后再进入工作台。\n\n修复删除当前项目后无法切换项目的问题；删除前保存草稿，删除后可继续使用其他项目或新建项目。\n\n项目回收站增加保存位置、空间占用、打开文件夹和清空全部；恢复前检查已保存图片，清理失败可重试。\n\n个人设置按常用与详细操作分组，授权、备份和高级说明可展开查看。\n\n优化图片预览、麦克风按钮居中和操作反馈，减少输入及听写时结果区的重复渲染。\n\n保留原有 Mac 系统听写和确认结束方式。通过软件内置更新升级，保留本机项目、图片、授权和模型设置。"
+      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/mac/arm64/Industrial-Design-Agent-1.8.2-mac-arm64.dmg",
+      "sha256": "6d32b4b488c9eb267b0a20824d55bb1dfc32d34c4b323720d0bdb211388450a5",
+      "releaseNotes": "工业设计智能体 1.8.2 Mac\n\n适用于 Apple 芯片和 Intel 两种 Mac。\n\n自 1.8.0 以来的更新：\n\n包装设计新增内衬设计方向，可根据产品设计纸板、珍珠棉等缓冲保护方案。\n\n连接模型中明确标注 RelayRouter 需要科学上网，补充 AIHubMix 模型的人民币参考费用，价格缺失时显示型号与软件版本便于排查，并修复 GeekAI 充值入口。gemini-3.1-flash-image-preview 的参考费用约 ¥0.463/次；实际费用以供应商账单为准。\n\n图片模型列表将 Nano Banana 2.1 排在默认推荐型号之后，方便选择。\n\n首次输入授权码时，可查看微信联系方式和微信小店购买海报，扫码联系或购买。模型调用、图片生成及授权校验逻辑保持不变。\n\n覆盖安装保留原有项目、图片、授权和模型设置。"
     },
     {
-      "version": "1.7.0",
+      "version": "1.8.2",
       "channel": "stable",
       "platform": "macos",
       "arch": "x64",
-      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/mac/x64/Industrial-Design-Agent-1.7.0-mac-x64.dmg",
-      "sha256": "b0d3f1c128f4773af613eda1cd44f017b47b8e8f1e3f418fe3fe983a48e890bc",
-      "releaseNotes": "工业设计智能体 1.7.0 Mac\n\n适用于 Apple 芯片和 Intel 两种 Mac。\n\n首次使用按“授权激活 → 连接模型 → 创建项目”的顺序进行，保存并启用模型连接后再进入工作台。\n\n修复删除当前项目后无法切换项目的问题；删除前保存草稿，删除后可继续使用其他项目或新建项目。\n\n项目回收站增加保存位置、空间占用、打开文件夹和清空全部；恢复前检查已保存图片，清理失败可重试。\n\n个人设置按常用与详细操作分组，授权、备份和高级说明可展开查看。\n\n优化图片预览、麦克风按钮居中和操作反馈，减少输入及听写时结果区的重复渲染。\n\n保留原有 Mac 系统听写和确认结束方式。通过软件内置更新升级，保留本机项目、图片、授权和模型设置。"
+      "url": "https://app.zhengshixiong.cn/updates/industrial-design-agent/mac/x64/Industrial-Design-Agent-1.8.2-mac-x64.dmg",
+      "sha256": "73e9cb799e4f5292f5070658ea089eb1327bfcad552e3edb759f2694caf21f99",
+      "releaseNotes": "工业设计智能体 1.8.2 Mac\n\n适用于 Apple 芯片和 Intel 两种 Mac。\n\n自 1.8.0 以来的更新：\n\n包装设计新增内衬设计方向，可根据产品设计纸板、珍珠棉等缓冲保护方案。\n\n连接模型中明确标注 RelayRouter 需要科学上网，补充 AIHubMix 模型的人民币参考费用，价格缺失时显示型号与软件版本便于排查，并修复 GeekAI 充值入口。gemini-3.1-flash-image-preview 的参考费用约 ¥0.463/次；实际费用以供应商账单为准。\n\n图片模型列表将 Nano Banana 2.1 排在默认推荐型号之后，方便选择。\n\n首次输入授权码时，可查看微信联系方式和微信小店购买海报，扫码联系或购买。模型调用、图片生成及授权校验逻辑保持不变。\n\n覆盖安装保留原有项目、图片、授权和模型设置。"
     }
   ]
 }

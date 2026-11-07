@@ -1,3 +1,5 @@
+import { userFacingError } from "@/lib/user-facing-error";
+
 type ErrorPayload = { error?: unknown; message?: unknown };
 
 function payloadMessage(payload: unknown) {
@@ -22,6 +24,6 @@ export async function readApiJson<T = Record<string, unknown>>(response: Respons
     throw new Error(`${fallback}：本机服务返回异常，请等待几秒后重试`);
   }
 
-  if (!response.ok) throw new Error(payloadMessage(payload) || `${fallback}（${response.status}）`);
+  if (!response.ok) throw new Error(userFacingError(payloadMessage(payload) || `请求失败（${response.status}）`, fallback));
   return payload as T;
 }

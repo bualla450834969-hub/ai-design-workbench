@@ -50,7 +50,7 @@ export function boardLayoutLabel(value: unknown) {
  * Shared hard constraint for every provider call that packs several concepts into one paid image.
  * The caller adds task-specific geometry or CMF rules around this common layout contract.
  */
-export function boardPrompt(value: unknown, kind: BoardKind = "variants") {
+export function boardPrompt(value: unknown, kind: BoardKind = "variants", routeOffset = 0) {
   const count = normalizeNaturalBoardItemCount(value);
   if (count === 1) return "";
   const layout = boardLayout(count);
@@ -69,8 +69,10 @@ export function boardPrompt(value: unknown, kind: BoardKind = "variants") {
         ? ["使用环境", "光照时段", "人物交互", "空间尺度", "环境材质", "氛围色温", "前后景层次", "使用情境", "陈列方式"]
         : ["整体长宽高比例", "外轮廓与视觉重心", "主次体块关系", "功能区布局", "分件与装配逻辑", "开孔与负形", "人机交互方式", "结构特征语言", "连续特征面"];
   const routeMatrix = Array.from({ length: count }, (_, index) => {
-    const primary = axes[index % axes.length];
-    const secondary = axes[(index + 4 + Math.floor(index / axes.length)) % axes.length];
+    const position = Math.max(0, Math.trunc(routeOffset)) + index;
+    const primary = axes[position % axes.length];
+    const step = 1 + ((3 + Math.floor(position / axes.length)) % (axes.length - 1));
+    const secondary = axes[(position + step) % axes.length];
     return `第${index + 1}格重点联合改变${primary}与${secondary}`;
   }).join("；");
   const rowRule = layout.rowCounts.join("+");

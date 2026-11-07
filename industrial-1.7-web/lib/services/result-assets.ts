@@ -6,6 +6,7 @@ import { store } from "@/lib/store";
 import { PROJECT_RESULTS_FOLDER, projectDirectory, projectFilesRoot } from "@/lib/project-files";
 import { assetFilePath, cleanMimeType, extensionForMime, legacyAssetFilePath, legacyProjectAssetFilePath } from "@/lib/services/local-asset-files";
 import { lockGeometryWithGeneratedColor } from "@/lib/image/mask-lock";
+import { verifiedTransparentPng } from "@/lib/image/transparent-output";
 import type { Asset } from "@/types/domain";
 import sharp from "sharp";
 import { MAX_ASSET_IMAGE_PIXELS, orientedImageDimensions } from "@/lib/image/asset-image";
@@ -48,6 +49,12 @@ function reserveResultSequenceNumbers(userId: string, projectId: string, project
   const numbers = Array.from({ length: count }, (_, index) => maximum + index + 1);
   resultSequenceHighWater.set(reservationKey, maximum + count);
   return numbers;
+}
+
+export function reserveGeneratedResultLabels(userId: string, projectId: string, count: number) {
+  const project = store.assertProject(userId, projectId);
+  return reserveResultSequenceNumbers(userId, projectId, project.folderName || project.id, count, [])
+    .map((number) => `方案 ${String(number).padStart(3, "0")}`);
 }
 
 function mimeFromUrl(url: string) {
@@ -189,11 +196,16 @@ export async function persistGeneratedImages(input: {
   /** Optional angle names for multiview exports; ids remain unchanged. */
   labels?: string[];
   resolution?: "1K" | "2K" | "4K";
+  /** Reject a provider result that contains no real alpha pixels. */
+  transparentBackground?: boolean;
   geometryLock?: { original: Asset };
   noveltyReference?: Asset;
+  /** Per-job small grayscale fingerprints, retained across incremental saves. */
+  comparisonSignatures?: Buffer[];
 }) {
   const assets: Asset[] = new Array(input.imageUrls.length);
   const urls: string[] = new Array(input.imageUrls.length);
+  let savedCount = 0;
   const signatures: Array<Buffer | undefined> = new Array(input.imageUrls.length);
   const colorSignatures: Array<Buffer | undefined> = new Array(input.imageUrls.length);
   const errors: Array<{ index: number; message: string }> = [];
@@ -218,6 +230,7 @@ export async function persistGeneratedImages(input: {
   let nextIndex = 0;
   const persistOne = async (sourceUrl: string, index: number) => {
     let imageDimensions: Pick<Asset, "nativeWidth" | "nativeHeight" | "exportWidth" | "exportHeight" | "upscaled"> = {};
+    let transparencyFailure = "";
     try {
       let image: { bytes: Buffer<ArrayBufferLike>; mimeType: string } = await readImage(sourceUrl);
       const nativeMetadata = await sharp(image.bytes, { failOn: "error", limitInputPixels: MAX_ASSET_IMAGE_PIXELS }).metadata();
@@ -227,7 +240,7 @@ export async function persistGeneratedImages(input: {
         const original = await readFile(assetFilePath(input.geometryLock.original))
           .catch(() => readFile(legacyProjectAssetFilePath(input.geometryLock!.original)))
           .catch(() => readFile(legacyAssetFilePath(input.geometryLock!.original)));
-        image = { bytes: await lockGeometryWithGeneratedColor(original, image.bytes), mimeType: "image/png" };
+        image = { bytes: await lockGeometryWithGeneratedColor(original, image.bytes, input.transparentBackground === true), mimeType: "image/png" };
       }
       const targetLongEdge = { "1K": 1024, "2K": 2048, "4K": 4096 }[input.resolution || "1K"];
       const metadata = await sharp(image.bytes, { failOn: "error", limitInputPixels: MAX_ASSET_IMAGE_PIXELS }).metadata();
@@ -249,6 +262,10 @@ export async function persistGeneratedImages(input: {
           mimeType: "image/png",
         };
       }
+      if (input.transparentBackground) {
+        try { image = { bytes: await verifiedTransparentPng(image.bytes), mimeType: "image/png" }; }
+        catch (error) { transparencyFailure = error instanceof Error ? error.message : "图片模型没有返回可用的透明背景。"; }
+      }
       const exported = orientedImageDimensions(await sharp(image.bytes, { failOn: "error", limitInputPixels: MAX_ASSET_IMAGE_PIXELS }).metadata());
       imageDimensions = { ...imageDimensions, exportWidth: exported.width, exportHeight: exported.height, upscaled: exported.width > native.width || exported.height > native.height };
       const sequence = String(index + 1).padStart(3, "0");
@@ -260,11 +277,12 @@ export async function persistGeneratedImages(input: {
         id,
         projectId: input.projectId,
         projectFolder: project.folderName || project.id,
-        name: resultName(index, image.mimeType),
+        name: transparencyFailure ? resultName(index, image.mimeType).replace(/(\.[^.]+)$/, "-未透明$1") : resultName(index, image.mimeType),
         type: image.mimeType,
         size: image.bytes.length,
         role: "result",
         origin: "generated",
+        ...(input.transparentBackground ? { tags: [transparencyFailure ? "透明背景未生成" : "透明背景"] } : {}),
         url: `/api/assets/${id}`,
         createdAt: new Date().toISOString(),
         sha256,
@@ -272,8 +290,10 @@ export async function persistGeneratedImages(input: {
         ...imageDimensions,
       };
       await saveAssetToCurrentProject(input.userId, asset, image.bytes);
+      savedCount += 1;
       assets[index] = asset;
       urls[index] = asset.url;
+      if (transparencyFailure) errors.push({ index, message: transparencyFailure });
     } catch (error) {
       console.error("Failed to persist generated image", error);
       const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
@@ -312,8 +332,7 @@ export async function persistGeneratedImages(input: {
   for (let index = 0; index < signatures.length; index += 1) {
     const current = signatures[index];
     if (!current || !assets[index]) continue;
-    for (let previousIndex = 0; previousIndex < index; previousIndex += 1) {
-      const previous = signatures[previousIndex];
+    for (const previous of [...(input.comparisonSignatures || []), ...signatures.slice(0, index)]) {
       if (!previous || previous.length !== current.length) continue;
       let difference = 0;
       for (let pixel = 0; pixel < current.length; pixel += 1) difference += Math.abs(current[pixel] - previous[pixel]);
@@ -324,6 +343,7 @@ export async function persistGeneratedImages(input: {
       }
     }
   }
+  input.comparisonSignatures?.push(...signatures.filter((value): value is Buffer => Boolean(value)));
 
   let unchangedCount = 0;
   if (sourceSignature) for (let index = 0; index < colorSignatures.length; index += 1) {
@@ -338,5 +358,5 @@ export async function persistGeneratedImages(input: {
     }
   }
 
-  return { assets, imageUrls: urls, errors, savedCount: assets.length - errors.length, unchangedCount };
+  return { assets, imageUrls: urls, errors, savedCount, unchangedCount };
 }

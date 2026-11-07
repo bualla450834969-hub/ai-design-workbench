@@ -1,12 +1,13 @@
 /** Stateless, browser-only model transport. No application API, cookies or proxy fallback. */
 import { isRelayRouterGeminiImageModel, isRelayRouterImageModel } from "@/lib/model-pricing";
+import { supportsTransparentBackgroundModel, TRANSPARENT_BACKGROUND_PROMPT } from "@/lib/transparent-background";
 
 export type BrowserDirectProvider = Pick<DesktopProviderDraft, "type" | "baseUrl" | "textModel" | "imageModel"> & { apiKey: string; name?: string };
 export type DirectImageInput = { mimeType: string; data: string };
 export type DirectImage = { blob: Blob; prompt?: string };
 export type DirectRequestOptions = { signal?: AbortSignal; timeoutMs?: number; beforeRequest?: () => Promise<void> };
-export type DirectTextInput = DirectRequestOptions & { provider: BrowserDirectProvider; systemPrompt: string; userPrompt: string; images?: DirectImageInput[]; maxTokens?: number };
-export type DirectImagesInput = DirectTextInput & { count: number; resolution?: string; aspectRatio?: string; concurrency?: number; promptForIndex?: (index: number) => string; onImage?: (image: DirectImage, index: number) => void | Promise<void> };
+export type DirectTextInput = DirectRequestOptions & { provider: BrowserDirectProvider; systemPrompt: string; userPrompt: string; images?: DirectImageInput[]; maxTokens?: number; jsonOutput?: boolean };
+export type DirectImagesInput = DirectTextInput & { count: number; resolution?: string; aspectRatio?: string; transparentBackground?: boolean; concurrency?: number; promptForIndex?: (index: number) => string; onImage?: (image: DirectImage, index: number) => void | Promise<void> };
 export type DirectImagesOutput = { images: DirectImage[]; model: string; provider: string; failureSummary?: string };
 
 type JsonObject = Record<string, unknown>;
@@ -198,10 +199,12 @@ function references(images: DirectImageInput[] | undefined, maximum = 9) {
   return normalized;
 }
 function imageParts(images: DirectImageInput[]) { return images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } })); }
-function textContent(payload: JsonObject) {
-  const nativeText = array(payload.candidates).flatMap((candidate) => array(object(object(candidate).content).parts)).map((part) => string(object(part).text)).filter(Boolean).join("\n").trim();
+function textContent(payload: JsonObject, jsonOutput = false) {
+  const candidates = jsonOutput ? array(payload.candidates).slice(0, 1) : array(payload.candidates);
+  const nativeText = candidates.flatMap((candidate) => array(object(object(candidate).content).parts)).filter((part) => object(part).thought !== true).map((part) => string(object(part).text)).filter(Boolean).join(jsonOutput ? "" : "\n").trim();
   if (nativeText) return nativeText;
-  return array(payload.choices).map((choice) => object(object(choice).message).content).map((content) => typeof content === "string" ? content : array(content).map((part) => string(object(part).text)).filter(Boolean).join("\n")).filter(Boolean).join("\n").trim();
+  const choices = jsonOutput ? array(payload.choices).slice(0, 1) : array(payload.choices);
+  return choices.map((choice) => object(object(choice).message).content).map((content) => typeof content === "string" ? content : array(content).map((part) => string(object(part).text)).filter(Boolean).join(jsonOutput ? "" : "\n")).filter(Boolean).join(jsonOutput ? "" : "\n").trim();
 }
 
 export async function fetchDirectModels(providerInput: BrowserDirectProvider, options: DirectRequestOptions = {}): Promise<string[]> {
@@ -228,10 +231,13 @@ export async function directText(input: DirectTextInput): Promise<{ text: string
     const payload = await json(await directFetch(apiUrl(provider, native ? `models/${encodeURIComponent(model)}:generateContent` : "chat/completions", native), signal, {
       method: "POST", headers: { ...(native ? { "x-goog-api-key": provider.apiKey } : { Authorization: `Bearer ${provider.apiKey}` }), "Content-Type": "application/json" },
       body: JSON.stringify(native
-        ? { ...(input.systemPrompt ? { system_instruction: { parts: [{ text: input.systemPrompt }] } } : {}), contents: [{ role: "user", parts: [{ text: input.userPrompt }, ...images.map((image) => ({ inlineData: image }))] }], generationConfig: { temperature: 0.2, ...(input.maxTokens ? { maxOutputTokens: input.maxTokens } : {}) } }
+        ? { ...(input.systemPrompt ? { system_instruction: { parts: [{ text: input.systemPrompt }] } } : {}), contents: [{ role: "user", parts: [{ text: input.userPrompt }, ...images.map((image) => ({ inlineData: image }))] }], generationConfig: { temperature: 0.2, ...(input.maxTokens ? { maxOutputTokens: input.maxTokens } : {}), ...(input.jsonOutput ? { responseMimeType: "application/json" } : {}) } }
         : { model, messages: [{ role: "system", content: input.systemPrompt }, { role: "user", content: [{ type: "text", text: input.userPrompt }, ...imageParts(images)] }], temperature: 0.2, stream: false, ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}) }),
     }), diagnostics, 8 * MIB);
-    const text = textContent(payload);
+    if (input.jsonOutput && (string(object(array(payload.candidates)[0]).finishReason).toUpperCase() === "MAX_TOKENS" || string(object(array(payload.choices)[0]).finish_reason).toLowerCase() === "length")) {
+      fail("文字分析：供应商的设计规划输出被长度限制截断；本次未调用图片模型。请缩短要求或更换文字模型，不会自动重试付费请求。");
+    }
+    const text = textContent(payload, input.jsonOutput);
     if (!text) fail("供应商没有返回文字内容；请核对所选文字模型。");
     return { text, model, provider: name(provider) };
   }, diagnostics);
@@ -301,6 +307,48 @@ function imageSize(model: string, ratio: string, standard: boolean) {
   if (!standard && /gpt-image-2|seedream|grok/i.test(model)) return vertical ? "1152x1536" : "1536x1152";
   return vertical ? "1024x1536" : "1536x1024";
 }
+
+async function verifiedTransparentPng(image: DirectImage): Promise<DirectImage> {
+  let bitmap: ImageBitmap;
+  try { bitmap = await createImageBitmap(image.blob); }
+  catch { fail("透明背景结果无法读取。请先核对供应商任务记录，再决定是否重试。", "image"); }
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.min(96, bitmap.width);
+    canvas.height = Math.min(96, bitmap.height);
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) fail("无法检查透明背景结果，请换用最新版浏览器后再试。", "image");
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let transparent = 0;
+    let opaque = 0;
+    let borderTransparent = 0;
+    for (let pixel = 0; pixel < canvas.width * canvas.height; pixel += 1) {
+      const alpha = pixels[pixel * 4 + 3];
+      if (alpha <= 16) {
+        transparent += 1;
+        const x = pixel % canvas.width, y = Math.floor(pixel / canvas.width);
+        if (x === 0 || y === 0 || x === canvas.width - 1 || y === canvas.height - 1) borderTransparent += 1;
+      }
+      if (alpha >= 240) opaque += 1;
+    }
+    const borderCount = canvas.width * 2 + canvas.height * 2 - 4;
+    if (transparent < Math.max(1, Math.ceil(canvas.width * canvas.height * 0.01)) || opaque < Math.max(1, Math.ceil(canvas.width * canvas.height * 0.01)) || borderTransparent < Math.ceil(borderCount * 0.5)) {
+      fail("图片模型返回了不透明背景，未得到可用的透明 PNG。请核对供应商任务和扣费情况，再更换支持透明背景的模型。", "image");
+    }
+    if (image.blob.type === "image/png") return image;
+    const full = document.createElement("canvas");
+    full.width = bitmap.width;
+    full.height = bitmap.height;
+    const fullContext = full.getContext("2d");
+    if (!fullContext) fail("透明图片转存 PNG 失败，请稍后重新保存。", "image");
+    fullContext.drawImage(bitmap, 0, 0);
+    const png = await new Promise<Blob | null>((resolve) => full.toBlob(resolve, "image/png"));
+    if (!png) fail("透明图片转存 PNG 失败，请稍后重新保存。", "image");
+    return { ...image, blob: png };
+  } finally { bitmap.close(); }
+}
+
 async function generateOne(input: DirectImagesInput, provider: BrowserDirectProvider, images: DirectImageInput[], model: string, index: number, count: number) {
   const aiHubGemini = provider.type === "aihubmix" && /^gemini-.*(?:image|nano-banana)/i.test(model);
   const native = nativeGemini(provider, model);
@@ -312,7 +360,7 @@ async function generateOne(input: DirectImagesInput, provider: BrowserDirectProv
   // variants must never reuse the first image's prompt for the entire batch.
   const userPrompt = input.promptForIndex ? input.promptForIndex(index) : input.userPrompt;
   if (typeof userPrompt !== "string" || !userPrompt.trim()) fail("本张图片的设计要求无效，未发起该次生成。", "configuration");
-  const prompt = [input.systemPrompt, userPrompt, count > 1 ? `本次输出批次第 ${index + 1}/${count} 张图片，只生成本次这一张。` : ""].filter(Boolean).join("\n\n");
+  const prompt = [input.systemPrompt, userPrompt, input.transparentBackground ? TRANSPARENT_BACKGROUND_PROMPT : "", count > 1 ? `本次输出批次第 ${index + 1}/${count} 张图片，只生成本次这一张。` : ""].filter(Boolean).join("\n\n");
   const diagnostics: DirectDiagnostics = { stage: "图片生成", apiKey: provider.apiKey, privateText: [userPrompt, input.systemPrompt] };
   const headers: Record<string, string> = { Authorization: `Bearer ${provider.apiKey}` };
   let endpoint: string, body: BodyInit;
@@ -335,6 +383,7 @@ async function generateOne(input: DirectImagesInput, provider: BrowserDirectProv
     const form = new FormData();
     for (const [key, value] of Object.entries({ model, prompt, n: "1", size: imageSize(model, ratio, true) })) form.set(key, value);
     if (/^gpt-image-/i.test(model)) form.set("output_format", "png");
+    if (input.transparentBackground) form.set("background", "transparent");
     images.forEach((image, imageIndex) => {
       const extension = image.mimeType === "image/jpeg" ? "jpg" : image.mimeType.split("/")[1];
       form.append(images.length === 1 ? "image" : "image[]", new Blob([base64Bytes(image.data, image.mimeType)], { type: image.mimeType }), `reference-${imageIndex + 1}.${extension}`);
@@ -343,19 +392,23 @@ async function generateOne(input: DirectImagesInput, provider: BrowserDirectProv
   } else {
     endpoint = apiUrl(provider, "images/generations");
     headers["Content-Type"] = "application/json";
-    body = JSON.stringify({ model, prompt, n: 1, size: imageSize(model, ratio, standardImages), ...(standardImages ? /^gpt-image-/i.test(model) ? { output_format: "png" } : {} : { async: false, ...(images.length ? { image: images.map((image) => image.data) } : {}) }) });
+    body = JSON.stringify({ model, prompt, n: 1, size: imageSize(model, ratio, standardImages), ...(standardImages ? /^gpt-image-/i.test(model) ? { output_format: "png" } : {} : { async: false, ...(images.length ? { image: images.map((image) => image.data) } : {}) }), ...(input.transparentBackground ? { background: "transparent", output_format: "png" } : {}) });
   }
   return request(input, (provider.type === "aihubmix" || provider.type === "relayrouter") && /^gpt-image-/i.test(model) ? 600_000 : 180_000, async (signal) => {
     await authorize(input, signal);
     const payload = await json(await directFetch(endpoint, signal, { method: "POST", headers, body }), diagnostics);
     const reference = responseImage(payload);
     if (!reference) fail("供应商未返回图片。请先核对供应商任务记录和扣费情况，不要直接重试付费请求。");
-    return downloadImage(reference, provider, signal, diagnostics);
+    const image = await downloadImage(reference, provider, signal, diagnostics);
+    return input.transparentBackground ? verifiedTransparentPng(image) : image;
   }, diagnostics);
 }
 export async function directImages(input: DirectImagesInput): Promise<DirectImagesOutput> {
   const provider = validatedProvider(input.provider);
   const model = modelId(provider.imageModel);
+  if (input.transparentBackground && !supportsTransparentBackgroundModel(provider.type, model)) {
+    fail("当前图片模型不支持真实透明背景。请切换到 GPT Image 2.5 Flare 或 Sunburst 后重试；本次未发起付费请求。", "configuration");
+  }
   if (provider.type === "relayrouter" && !isRelayRouterImageModel(model)) {
     fail("RelayRouter 当前仅开放已适配的 Gemini 图片、GPT Image 2 与 2.5 型号；本次未发起付费请求。", "configuration");
   }

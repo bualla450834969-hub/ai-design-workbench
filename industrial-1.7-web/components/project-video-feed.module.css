@@ -1,0 +1,30 @@
+.feed { min-width: 0; padding: 14px 0 24px; color: var(--ink, #30362f); }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.header h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 14px; }
+.header button, .source button { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; border: 1px solid #dddcd5; border-radius: 8px; background: #fff; color: inherit; padding: 6px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+.card { min-width: 0; padding: 15px; margin: 0 0 14px; border: 1px solid #dfddd5; border-radius: 15px; background: #faf9f6; }
+.title { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.title strong { overflow-wrap: anywhere; }
+.status { display: inline-flex; align-items: center; gap: 5px; color: #6c7469; font-size: 12px; }
+.source { display: flex; align-items: center; gap: 10px; margin-top: 9px; color: #747970; font-size: 12px; }
+.source span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source button { margin-left: auto; }
+.hint { color: #747970; font-size: 12px; line-height: 1.6; }
+.error { color: #a73529; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.video { display: block; width: 100%; max-height: min(60vh, 520px); margin-top: 13px; border-radius: 10px; background: #111; }
+.download { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 12px; padding: 8px 12px; border: 1px solid #dddcd5; border-radius: 9px; background: #fff; color: inherit; font-size: 13px; text-decoration: none; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+:global(html[data-theme="dark"]) .feed { color: #f1f3ec; }
+:global(html[data-theme="dark"]) .card { background: #292e27; border-color: #4d5348; }
+:global(html[data-theme="dark"]) .header button,
+:global(html[data-theme="dark"]) .source button,
+:global(html[data-theme="dark"]) .download { background: #30362e; border-color: #525a4c; }
+:global(html[data-theme="dark"]) .source,
+:global(html[data-theme="dark"]) .hint,
+:global(html[data-theme="dark"]) .status { color: #bdc5b8; }
+:global(html[data-theme="dark"]) .error { color: #ffb5a9; }
+
+.title strong { display: inline-flex; align-items: center; gap: 6px; }
+.refresh { display: inline-flex; align-items: center; border: 0; background: transparent; color: inherit; padding: 4px; cursor: pointer; }

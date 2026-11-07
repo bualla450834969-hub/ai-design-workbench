@@ -1,4 +1,5 @@
 import type { AgentId, Asset, GenerationJob, GenerationResult, Message, Project, ProjectCanvas, RecycledProject, UserSession } from "@/types/domain";
+import { normalizeFreeChatMemory } from "@/lib/free-chat-memory";
 import { dataPath } from "@/lib/data-path";
 import { cleanProjectFolderName, isSafeProjectFolderName, migrateLegacyProjectAssetFolders, migrateReservedProjectDirectory, moveProjectDirectory, projectDirectory, projectFilesRoot, PROJECT_RECYCLE_FOLDER, recycleProjectDirectory } from "@/lib/project-files";
 import { assetFilePath, legacyAssetFilePath, legacyProjectAssetFilePath } from "@/lib/services/local-asset-files";
@@ -419,10 +420,10 @@ class DemoStore {
     return this.createProject(userId, DEFAULT_PROJECT_NAME, DEFAULT_PROJECT_DESCRIPTION);
   }
 
-  updateProject(userId: string, projectId: string, update: { name?: string; description?: string; canvas?: ProjectCanvas; workspaceState?: Project["workspaceState"] }) {
+  updateProject(userId: string, projectId: string, update: { name?: string; description?: string; freeChatMemory?: string; canvas?: ProjectCanvas; workspaceState?: Project["workspaceState"] }) {
     assertNoDesktopMaintenance();
     const project = this.assertProject(userId, projectId);
-    const previousState = { workspaceState: project.workspaceState, canvas: project.canvas, updatedAt: project.updatedAt };
+    const previousState = { workspaceState: project.workspaceState, canvas: project.canvas, freeChatMemory: project.freeChatMemory, updatedAt: project.updatedAt };
     if (update.name !== undefined) {
       if (this.projectReads.get(projectId)) throw new Error("项目正在导出，请等待导出完成后再重命名");
       const name = update.name.trim().replace(/\s+/g, " ").slice(0, 60);
@@ -437,15 +438,28 @@ class DemoStore {
       project.name = name;
     }
     if (update.description !== undefined) project.description = update.description.trim().slice(0, 300);
+    if (update.freeChatMemory !== undefined) project.freeChatMemory = normalizeFreeChatMemory(update.freeChatMemory);
     if (update.canvas !== undefined) project.canvas = update.canvas;
     if (update.workspaceState !== undefined) project.workspaceState = { ...project.workspaceState, ...update.workspaceState };
     project.updatedAt = new Date().toISOString();
     this.synchronizeAssetReferences(projectId);
-    if (update.name === undefined && update.description === undefined) {
+    if (update.name === undefined && update.description === undefined && update.freeChatMemory === undefined) {
       try { this.persistProjectState(project); }
       catch (error) { Object.assign(project, previousState); throw error; }
     } else this.persist();
     return project;
+  }
+
+  updateFreeChatMemoryIfUnchanged(userId: string, projectId: string, previous: string, proposed: string) {
+    assertNoDesktopMaintenance();
+    const project = this.assertProject(userId, projectId);
+    if ((project.freeChatMemory || "") !== previous) return false;
+    const next = normalizeFreeChatMemory(proposed);
+    if (!next || next === previous) return false;
+    project.freeChatMemory = next;
+    project.updatedAt = new Date().toISOString();
+    this.persist();
+    return true;
   }
 
   assertProject(userId: string, projectId: string) {

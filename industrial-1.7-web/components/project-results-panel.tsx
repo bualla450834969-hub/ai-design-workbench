@@ -6,6 +6,7 @@ import { projectResultDisplayEntries, resultPixelLabels, resultThumbnailUrl, typ
 import { browserDownloadMessage, chooseBrowserDownloadDirectory, downloadProjectAsset, forgetBrowserDownloadDirectory, restoreBrowserDownloadDirectory, savePreparedBrowserDownload, supportsBrowserDownloadDirectory, type BrowserDownloadDirectory, type BrowserDownloadResult } from "@/lib/browser-downloads";
 import type { Asset, GenerationResult } from "@/types/domain";
 import { isBrowserLocalMode } from "@/lib/browser-local-mode";
+import { userFacingError } from "@/lib/user-facing-error";
 import styles from "./project-results-panel.module.css";
 
 export interface ProjectResultSelection {
@@ -20,9 +21,11 @@ type AssetMetadataPatch = { favorite?: boolean; note?: string };
 export interface ProjectResultsPanelProps {
   projectId?: string;
   assets: Asset[];
-  onPreview: (asset: Asset) => void;
+  onPreview: (asset: Asset, list?: Asset[]) => void;
   onPatch: (asset: Asset, patch: AssetMetadataPatch) => Promise<void>;
   onSixView: (asset: Asset) => void;
+  onWhitePng?: (asset: Asset) => void;
+  onVideo?: (asset: Asset) => void;
   onRestore?: (asset: Asset) => void;
   onReuse?: (asset: Asset) => void;
   onExport?: (ids?: string[], favoritesOnly?: boolean) => Promise<BrowserDownloadResult | void>;
@@ -51,13 +54,15 @@ export function projectResultMatchesSearch(entry: ProjectResultDisplayEntry, que
   return `${displayName} ${asset.name} ${asset.note || ""} ${createdLabel(asset.createdAt)}`.toLocaleLowerCase().includes(search);
 }
 
-function ResultCard({ asset, displayName, busy, onPreview, onPatch, onSixView, onRestore, onReuse, restoring, selected, onSelect, onDownload, downloading, web }: {
+function ResultCard({ asset, displayName, busy, onPreview, onPatch, onSixView, onWhitePng, onVideo, onRestore, onReuse, restoring, selected, onSelect, onDownload, downloading, web }: {
   asset: Asset;
   displayName: string;
   busy: boolean;
   onPreview: () => void;
   onPatch: (patch: AssetMetadataPatch) => Promise<void>;
   onSixView: () => void;
+  onWhitePng?: () => void;
+  onVideo?: () => void;
   onRestore?: () => void;
   onReuse?: () => void;
   restoring: boolean;
@@ -84,14 +89,14 @@ function ResultCard({ asset, displayName, busy, onPreview, onPatch, onSixView, o
       <div className={styles.nameRow}><label className={styles.selection}><input type="checkbox" checked={selected} onChange={onSelect} aria-label={`选择 ${displayName}`} /><strong title={displayName}>{displayName}</strong></label><button className={`${styles.favorite} ${asset.favorite ? styles.favoriteActive : ""}`} type="button" onClick={() => void onPatch({ favorite: !asset.favorite })} disabled={busy} aria-pressed={Boolean(asset.favorite)} aria-label={asset.favorite ? `取消收藏 ${displayName}` : `收藏 ${displayName}`}><Star size={16} fill={asset.favorite ? "currentColor" : "none"} /></button></div>
       <time dateTime={asset.createdAt}>{createdLabel(asset.createdAt)}</time>
       <div className={styles.pixelLabels}><span>{dimensions.native}</span><span className={asset.upscaled ? styles.upscaled : ""}>{web && asset.localSaveError ? isBrowserLocalMode() ? "尚未保存到本机浏览器" : "尚未保存到服务器项目" : dimensions.exported}</span></div>
-      {asset.localSaveError && <div className={styles.saveWarning} title={asset.localSaveError}>{web ? isBrowserLocalMode() ? "尚未保存到本机浏览器" : "尚未保存到服务器项目" : "尚未保存本机"} {onRestore && <button type="button" disabled={restoring} onClick={onRestore}>{restoring ? "保存中…" : "重新保存"}</button>}</div>}
+      {asset.localSaveError && <div className={styles.saveWarning} title={userFacingError(asset.localSaveError, "保存图片失败")}>{web ? isBrowserLocalMode() ? "尚未保存到本机浏览器" : "尚未保存到服务器项目" : "尚未保存本机"} {onRestore && <button type="button" disabled={restoring} onClick={onRestore}>{restoring ? "保存中…" : "重新保存"}</button>}</div>}
       <label className={styles.noteLabel}>方案备注<input value={note} placeholder="记录差异、亮点或待调整处" maxLength={240} disabled={busy} onChange={(event) => setNote(event.target.value)} onBlur={() => void saveNote()} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} /></label>
-      <div className={styles.cardActions}><button type="button" onClick={onDownload} disabled={downloading || Boolean(asset.localSaveError)} title={asset.localSaveError ? "请先重新保存已有图片，再下载" : "下载这张图片到设备"}><Download size={14} />{downloading ? "下载中…" : "下载图片"}</button><button type="button" onClick={onSixView}>生成六视图</button>{onReuse && <button type="button" onClick={onReuse}>沿用参数</button>}</div>
+      <div className={styles.cardActions}><button type="button" onClick={onDownload} disabled={downloading || Boolean(asset.localSaveError)} title={asset.localSaveError ? "请先重新保存已有图片，再下载" : "下载这张图片到设备"}><Download size={14} />{downloading ? "下载中…" : "下载原图"}</button><button type="button" onClick={onSixView}>生成六视图</button>{asset.tags?.includes("透明背景") && onWhitePng && <button type="button" onClick={onWhitePng} disabled={Boolean(asset.localSaveError)}>白底 PNG</button>}{onVideo && <button type="button" onClick={onVideo} disabled={Boolean(asset.localSaveError)}>生成视频</button>}{onReuse && <button type="button" onClick={onReuse}>沿用参数</button>}</div>
     </div>
   </article>;
 }
 
-export function ProjectResultsPanel({ projectId, assets, onPreview, onPatch, onSixView, onRestore, onReuse, onExport, onOpenResultsDirectory, downloadUserId, restoringIds = [], open, favoritesOnly, onClose, onFavoritesOnlyChange }: ProjectResultsPanelProps) {
+export function ProjectResultsPanel({ projectId, assets, onPreview, onPatch, onSixView, onWhitePng, onVideo, onRestore, onReuse, onExport, onOpenResultsDirectory, downloadUserId, restoringIds = [], open, favoritesOnly, onClose, onFavoritesOnlyChange }: ProjectResultsPanelProps) {
   const [pageSize, setPageSize] = useState(24);
   const [exporting, setExporting] = useState(false);
   const [query, setQuery] = useState("");
@@ -186,7 +191,7 @@ export function ProjectResultsPanel({ projectId, assets, onPreview, onPatch, onS
     if (!selected.includes(id) && selected.length >= 500) { setError("每次最多选择 500 张，请分批导出。"); return; }
     setSelectedIds(selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id]);
   };
-  const cards = (items: ProjectResultDisplayEntry[]) => items.map(({ asset, displayName }) => <ResultCard key={asset.id} asset={asset} displayName={displayName} busy={busyIds.includes(asset.id)} onPreview={() => { onClose(); onPreview(asset); }} onPatch={(patch) => patchAsset(asset, patch)} onSixView={() => { onClose(); onSixView(asset); }} onReuse={onReuse ? () => onReuse(asset) : undefined} onRestore={onRestore ? () => onRestore(asset) : undefined} restoring={restoringIds.includes(asset.id)} selected={selected.includes(asset.id)} onSelect={() => select(asset.id)} onDownload={() => void download(asset, displayName)} downloading={downloadingIds.includes(asset.id)} web={Boolean(downloadUserId)} />);
+  const cards = (items: ProjectResultDisplayEntry[]) => items.map(({ asset, displayName }) => <ResultCard key={asset.id} asset={asset} displayName={displayName} busy={busyIds.includes(asset.id)} onPreview={() => { onClose(); onPreview(asset, items.map((entry) => entry.asset)); }} onPatch={(patch) => patchAsset(asset, patch)} onSixView={() => { onClose(); onSixView(asset); }} onWhitePng={onWhitePng ? () => { onClose(); onWhitePng(asset); } : undefined} onVideo={onVideo ? () => { onClose(); onVideo(asset); } : undefined} onReuse={onReuse ? () => onReuse(asset) : undefined} onRestore={onRestore ? () => onRestore(asset) : undefined} restoring={restoringIds.includes(asset.id)} selected={selected.includes(asset.id)} onSelect={() => select(asset.id)} onDownload={() => void download(asset, displayName)} downloading={downloadingIds.includes(asset.id)} web={Boolean(downloadUserId)} />);
 
   if (!open) return null;
   return <div className={styles.layer}>
@@ -212,7 +217,7 @@ export function ProjectResultsPanel({ projectId, assets, onPreview, onPatch, onS
         {canChooseDirectory && <><button type="button" disabled={choosingDirectory} onClick={() => void chooseDirectory()}><FolderOpen size={15} />{choosingDirectory ? "选择中…" : "选择下载文件夹"}</button>{directory && <button type="button" onClick={() => { void forgetBrowserDownloadDirectory(downloadUserId).then(() => setDirectory(null)); }}>使用系统下载</button>}</>}
         <span>{directory ? `下载文件夹：${directory.name}${directory.permission !== "granted" ? "（需重新选择授权）" : directory.remembered ? "（已记住，浏览器可能要求重新授权）" : "（仅本次页面有效）"}` : "下载由浏览器或系统管理；如 iPad 不支持选择固定目录，请使用“存储到文件”。"} {isBrowserLocalMode() ? "项目原件保存在当前浏览器，请定期导出备份。" : "项目原件仍保存在服务器。"}</span>
       </div>}
-      {error && <p className={styles.error} role="alert">{error}</p>}
+      {error && <p className={styles.error} role="alert">{userFacingError(error, "读取项目结果失败")}</p>}
       {notice && <p className={styles.notice} role="status">{notice}</p>}
       {preparedDownload && <div className={styles.downloadLocation}><button type="button" onClick={downloadPrepared}><Download size={14} />下载已准备图片包</button><span>{preparedDownload.filename} · 仅含图片；请在浏览器下载列表中确认保存。</span></div>}
       {onExport && <div className={`${styles.toolbar} ${styles.exportTools}`}>

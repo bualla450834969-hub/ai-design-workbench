@@ -6,7 +6,7 @@ type GenerationAssetSnapshot = Pick<Asset, "id" | "role" | "sha256" | "annotatio
 
 export type GenerationRetry = {
   endpoint: "/api/messages" | "/api/free-chat";
-  payload: { projectId: string; content: string; assetIds: string[]; agentId?: AgentId; resolution?: "1K" | "2K" | "4K"; aspectRatio?: "auto" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16"; boardItems?: number; showDimensions?: boolean; settings?: Record<string, string | number | boolean> };
+  payload: { projectId: string; content: string; assetIds: string[]; agentId?: AgentId; resolution?: "1K" | "2K" | "4K"; aspectRatio?: "auto" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16"; transparentBackground?: boolean; boardItems?: number; showDimensions?: boolean; settings?: Record<string, string | number | boolean> };
   providerId: string;
   textModel: string;
   imageModel: string;

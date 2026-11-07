@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import net from "node:net";
 import type { LookupFunction } from "node:net";
-import { Agent } from "undici";
+import { Agent, Client, ProxyAgent, type Dispatcher } from "undici";
 
 type Address = { address: string; family: number };
 const PRIVATE_URL_ERROR = "图片地址指向本机或内网，已拒绝下载";
@@ -55,8 +55,28 @@ function checkedUrl(value: string) {
 }
 
 /** Pin the DNS decision to the connection, rather than checking then resolving again. */
-export function pinnedImageDispatcher(hostname: string, addresses: Address[]) {
+export function pinnedImageDispatcher(hostname: string, addresses: Address[], proxy?: string) {
   if (!addresses.length || addresses.some((entry) => isPrivateNetworkAddress(entry.address))) throw new Error(PRIVATE_URL_ERROR);
+  if (proxy) {
+    // CONNECT to the verified public IP through the user's proxy, while TLS
+    // still verifies the original hostname. Do not let the proxy resolve an
+    // untrusted content URL again after its public-address check.
+    const address = addresses.find((entry) => entry.family === 4) || addresses[0];
+    return new ProxyAgent({ uri: proxy, requestTls: { servername: hostname, timeout: 15_000 },
+      clientFactory(origin, options) {
+        const client = new Client(origin, options);
+        const connect = client.connect.bind(client);
+        client.connect = ((input: Dispatcher.ConnectOptions, callback?: (error: Error | null, data: Dispatcher.ConnectData) => void) => {
+          const requested = new URL(`https://${input.path}`);
+          if (requested.hostname.toLowerCase().replace(/^\[|\]$/g, "") !== hostname) throw new Error("下载连接域名与安全校验不一致");
+          const endpoint = `${address.family === 6 ? `[${address.address}]` : address.address}:${requested.port || 443}`;
+          const next = { ...input, path: endpoint, headers: { ...(input.headers as Record<string, string>), host: endpoint } };
+          return callback ? connect(next, callback) : connect(next);
+        }) as typeof client.connect;
+        return client;
+      },
+    });
+  }
   const pinnedLookup: LookupFunction = (host, options, callback) => {
     if (host.toLowerCase().replace(/\.$/, "") !== hostname) {
       callback(new Error("图片连接域名与安全校验不一致"), "", 4);
@@ -90,7 +110,7 @@ async function boundedBody(response: Response, maxBytes: number, message: string
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), total);
 }
 
-async function resolveFakeProxyHost(hostname: string): Promise<Address[]> {
+async function resolveFakeProxyHost(hostname: string, proxy?: string): Promise<Address[]> {
   // A Fake-IP is NOT an allowlist exception. Verify the public hostname through
   // fixed HTTPS resolvers, then connect only to their validated real address.
   // No supplier URL, path, token or Authorization header reaches these services.
@@ -100,11 +120,11 @@ async function resolveFakeProxyHost(hostname: string): Promise<Address[]> {
     { url: "https://dns.google/resolve", hostname: "dns.google", address: "8.8.8.8" },
   ];
   for (const resolver of resolvers) {
-    const dispatcher = pinnedImageDispatcher(resolver.hostname, [{ address: resolver.address, family: 4 }]);
+    const dispatcher = pinnedImageDispatcher(resolver.hostname, [{ address: resolver.address, family: 4 }], proxy);
     try {
       const response = await fetch(`${resolver.url}?name=${encodeURIComponent(hostname)}&type=A`, {
         headers: { Accept: "application/dns-json" }, redirect: "error", signal: AbortSignal.timeout(6_000), dispatcher,
-      } as RequestInit & { dispatcher: Agent });
+      } as RequestInit & { dispatcher: Dispatcher });
       if (!response.ok) { await response.body?.cancel(); continue; }
       const record = JSON.parse((await boundedBody(response, MAX_DNS_BYTES, "公网域名校验响应过大")).toString("utf8")) as {
         Status?: number; Question?: { name?: string; type?: number } | Array<{ name?: string; type?: number }>; Answer?: Array<{ type?: number; data?: string }>;
@@ -122,10 +142,11 @@ async function resolveFakeProxyHost(hostname: string): Promise<Address[]> {
   throw new Error("代理返回了虚拟图片地址，无法验证公网下载地址；请暂时关闭代理的 Fake-IP DNS 或切换网络后重新保存，无需重新生图。");
 }
 
-export async function resolvePublicImageUrl(value: string) {
+export async function resolvePublicImageUrl(value: string, proxy?: string) {
   const { url, hostname } = checkedUrl(value);
   let addresses: Address[];
   if (net.isIP(hostname)) addresses = [{ address: hostname, family: net.isIP(hostname) }];
+  else if (proxy) addresses = await resolveFakeProxyHost(hostname, proxy);
   else {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -149,7 +170,7 @@ async function downloadPublicImageOnce(value: string, options: { maxBytes: numbe
     try {
       const response = await fetch(target.url, {
         headers: options.headersForUrl?.(target.url.toString()), redirect: "manual", signal, dispatcher,
-      } as RequestInit & { dispatcher: Agent });
+      } as RequestInit & { dispatcher: Dispatcher });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         await response.body?.cancel();
         const location = response.headers.get("location");
