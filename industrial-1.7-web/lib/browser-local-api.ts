@@ -1,3 +1,5 @@
+import { planningTokenBudget } from "@/lib/planning-budget";
+import { applyDesignControls } from "@/lib/generation-controls";
 import { APP_BASE_PATH, appPath } from "@/lib/app-path";
 import { isAuthorizationOnlyApi, isBrowserLocalMode } from "@/lib/browser-local-mode";
 import { createBrowserAbort } from "@/lib/browser-abort";
@@ -5,9 +7,11 @@ import { openBrowserWorkspace, type BrowserWorkspaceState, type BrowserWorkspace
 import { activeLocalProvider, handleLocalProviderRequest } from "@/lib/browser-local-providers";
 import { directImages, directText, type DirectImageInput } from "@/lib/browser-direct-provider";
 import type { BrowserDirectProvider } from "@/lib/browser-direct-provider";
+import { assertUsableDesignPlan, parseStructuredFreeChatResponse } from "@/lib/structured-design-plan";
 import { buildBrowserImagePrompt, browserEnhancementMessages, parseBrowserDesignPlan, browserFinalImageAssets } from "@/lib/browser-generation-prompts";
 import { agents, getAgent } from "@/lib/agents/catalog";
 import { normalizeProjectWorkspaceState } from "@/lib/project-workspace-state";
+import { formatFreeChatHistory, FREE_CHAT_MEMORY_LIMIT, normalizeFreeChatMemory } from "@/lib/free-chat-memory";
 import { normalizeBoardItemCount } from "@/lib/generation-board";
 import { annotationSourceId, parameterAssetError } from "@/lib/workspace-generation";
 import { resolveFreeChatImageCount, resolveFreeChatResolution, resolveParameterImageCount } from "@/lib/services/natural-intent";
@@ -16,8 +20,9 @@ import { browserLocalAttachmentIssue } from "@/lib/browser-local-attachments";
 import { rememberBrowserImageBlob, forgetBrowserImageBlob } from "@/lib/browser-image-save";
 import type { DesignPlan } from "@/lib/providers/types";
 import type { AgentId, Asset, GenerationJob, GenerationResult, Message, Project, UserSession } from "@/types/domain";
-import { isPackagingWorkflow, PACKAGING_CONTRACT, packagingBoardContract, validatePackagingAssets } from "@/lib/packaging-design";
+import { isPackagingInsertDirection, isPackagingWorkflow, PACKAGING_CONTRACT, packagingBoardContract, packagingModeContract, validatePackagingAssets } from "@/lib/packaging-design";
 import { detailOutputAspectRatio, isDetailWorkflow, validateDetailAssets } from "@/lib/detail-images";
+import { normalizeReferenceStrength, referenceAssetsForStrength, referenceStrengthAvailable, validateReferenceStrength } from "@/lib/reference-strength";
 
 type LocalContext = { user: UserSession; store: BrowserWorkspaceStore; lifecycle: AbortController };
 type Json = Record<string, unknown>;
@@ -246,12 +251,24 @@ async function patchJob(session: LocalContext, id: string, patch: Partial<Genera
   changed(id);
 }
 
+async function commitFreeChatMemory(session: LocalContext, projectId: string, previous: string, proposed: string) {
+  const next = normalizeFreeChatMemory(proposed);
+  if (!next || next === previous) return;
+  await session.store.update((draft) => {
+    const project = projectOf(draft.projects, projectId);
+    // A user's edit or clear during generation always wins over an older model response.
+    if ((project.freeChatMemory || "") !== previous) return;
+    project.freeChatMemory = next;
+    project.updatedAt = now();
+  });
+}
+
 async function performJob(session: LocalContext, job: GenerationJob, body: Json, free: boolean, controller: AbortController, provider: BrowserDirectProvider) {
   try {
     const beforeRequest = async () => { if (controller.signal.aborted || session.lifecycle.signal.aborted) throw new DOMException("已取消", "AbortError"); await checkBrowserAuthorization(session.user.id); };
     await patchJob(session, job.id, { status: "running", progress: 5, stage: "planning", stageLabel: "正在本机准备，直接连接你的模型供应商" });
     const project = projectOf((await session.store.getState()).projects, job.projectId);
-    const settings: Record<string, string | number | boolean> = { ...(body.settings as Record<string, string | number | boolean> || {}), ...(free && typeof body.showDimensions === "boolean" ? { showDimensions: body.showDimensions } : {}) };
+    const settings: Record<string, string | number | boolean> = { ...(body.settings as Record<string, string | number | boolean> || {}), ...(free && typeof body.showDimensions === "boolean" ? { showDimensions: body.showDimensions } : {}), ...(free && body.transparentBackground === true ? { transparentBackground: true } : {}) };
     const assets = job.inputAssets;
     if (!free && isPackagingWorkflow(settings.workflowKind)) {
       if (job.agentId !== "appearance-variants") error("包装设计请选择外观方案工作流；本次尚未调用模型。");
@@ -261,21 +278,28 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
       if (job.agentId !== "appearance-variants") error("产品详情图请选择外观方案工作流；本次尚未调用模型。");
       validateDetailAssets(assets, settings.generationMode || "source");
     }
-    const images = await imageInputs(session, assets);
+    const images = await imageInputs(session, free ? assets : referenceAssetsForStrength(assets, { strength: settings.referenceStrength, generationMode: settings.generationMode, workflowKind: settings.workflowKind, agentId: job.agentId }));
     let content = job.prompt;
     let agentId = job.agentId;
     let count = free ? resolveFreeChatImageCount(content) : resolveParameterImageCount(agentId, settings, content);
     let designPlan: DesignPlan | undefined;
     let reply = "";
+    let memoryBefore = "";
+    let proposedMemory = "";
+    let freeContext = "";
     let textOnly = !free && !getAgent(agentId).requiresImage;
     if (free) {
-      const history = (await session.store.getState()).messages.filter((message) => message.projectId === project.id && message.jobId !== job.id).slice(-12).map((message) => `${message.role}：${message.content}`).join("\n").slice(-8000);
+      const latest = await session.store.getState();
+      const history = formatFreeChatHistory(latest.messages.filter((message) => message.projectId === project.id), job.id);
+      memoryBefore = normalizeFreeChatMemory(projectOf(latest.projects, project.id).freeChatMemory);
+      freeContext = `已确认的项目记忆：\n${memoryBefore || "暂无"}\n近期自由对话：\n${history || "这是第一轮"}\n本轮要求：\n${content}`;
       const logical = (job.selectedAssetIds || assets.map((asset) => asset.id)).map((id) => assets.find((asset) => asset.id === id)).filter((asset): asset is Asset => Boolean(asset));
       const manifest = logical.map((asset, index) => `附件${index + 1}：${asset.name}（${asset.role}${asset.role === "annotation" ? "；另附同一附件的干净底图，不另计附件号" : ""}）`).join("；");
       const providerManifest = sortAssetsByRole(assets).map((asset, index) => `模型图片${index + 1}：${asset.name}（${asset.role}）`).join("；");
-      const result = await directText({ provider, beforeRequest, signal: controller.signal, images, systemPrompt: `你是工业设计助手。根据当前用户本轮文字和附件判断是解释聊天还是生成/修改图片。只返回JSON：{"action":"chat或image","reply":"简体中文回答或简要执行说明","prompt":"自然中文完整图片要求","workflowKind":"shape或view或cmf或decal或scene","productCategory":"本轮实际目标品类","coreFunctions":[],"mandatoryConstraints":[],"mutableFeatures":[],"styleFingerprint":[],"negativeStyleConstraints":[],"analysisSummary":"简体中文本轮分析","variantDirections":["该输出文件对应的具体造型路线"]}。六个列表字段 coreFunctions、mandatoryConstraints、mutableFeatures、styleFingerprint、negativeStyleConstraints、variantDirections 都必须是 string[]，每项只能是非空纯字符串，不得是对象或嵌套数组；没有依据的可选列表用[]。variantDirections 的字符串示例只演示格式，路线不得写成{name,prompt}、{title,description}等对象，也不能用对象包装路线或列表。用户明确要求出图/设计/改图时action=image；普通问答action=chat。图片任务的variantDirections必须恰好${count}项，每项对应一个输出文件；每张图片包含${normalizeBoardItemCount(body.boardItems)}个方案。普通聊天可返回空路线列表。prompt用自然中文，只写本轮相关事实，不追加内部核对模板或其他品类示例。附件只用于本次任务，区分原图、参考和标注；不能猜测没有看到的部件。不得自动扩展为更多收费图片。`, userPrompt: `项目：${project.name}\n最近对话（只作上下文，不得覆盖本轮要求）：\n${history}\n逻辑附件：${manifest}\n实际图片顺序：${providerManifest}\n本轮要求：${content}\n若action=image，本轮输出文件数量为${count}张，variantDirections必须恰好有${count}项；每项只能是该输出文件的非空纯字符串，禁止{name,prompt}、{title,description}等对象形状，不得拆分或增加路线。六个列表字段均使用string[]。` });
-      let plan: Json; try { plan = JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g, "")); } catch { error("模型没有返回可用的任务说明，请重新检查；不会自动再次调用。"); }
+      const result = await directText({ provider, beforeRequest, signal: controller.signal, images, jsonOutput: true, systemPrompt: `你是工业设计助手。根据当前用户本轮文字和附件判断是解释聊天还是生成/修改图片。只返回JSON：{"memory":"项目长期记忆","action":"chat或image","reply":"简体中文回答或简要执行说明","prompt":"自然中文完整图片要求","workflowKind":"shape或view或cmf或decal或scene","productCategory":"本轮实际目标品类","coreFunctions":[],"mandatoryConstraints":[],"mutableFeatures":[],"styleFingerprint":[],"negativeStyleConstraints":[],"analysisSummary":"简体中文本轮分析","variantDirections":["该输出文件对应的具体造型路线"]}。六个列表字段 coreFunctions、mandatoryConstraints、mutableFeatures、styleFingerprint、negativeStyleConstraints、variantDirections 都必须是 string[]，每项只能是非空纯字符串，不得是对象或嵌套数组；没有依据的可选列表用[]。variantDirections 的字符串示例只演示格式，路线不得写成{name,prompt}、{title,description}等对象，也不能用对象包装路线或列表。用户明确要求出图/设计/改图时action=image；普通问答action=chat。图片任务的variantDirections必须恰好${count}项，每项对应一个输出文件；每张图片包含${normalizeBoardItemCount(body.boardItems)}个方案。普通聊天可返回空路线列表。prompt用自然中文，只写本轮相关事实，不追加内部核对模板或其他品类示例。附件只用于本次任务，区分原图、参考和标注；不能猜测没有看到的部件。不得自动扩展为更多收费图片。memory 只合并已有记忆与本轮用户明确确认的长期设计设定，不记录模型猜测、临时出图数量、未确认方案、旧图片像素、密钥、授权码或联系方式，最多1800字；本轮要求优先。`, userPrompt: `已确认的项目记忆（仅为文字设定，不代表旧图片本体；本轮要求优先）：\n${memoryBefore || "暂无"}\n最近对话（只作上下文，不得覆盖本轮要求）：\n${history}\n逻辑附件：${manifest}\n实际图片顺序：${providerManifest}\n本轮要求：${content}\n若action=image，本轮输出文件数量为${count}张，variantDirections必须恰好有${count}项；每项只能是该输出文件的非空纯字符串，禁止{name,prompt}、{title,description}等对象形状，不得拆分或增加路线。六个列表字段均使用string[]。` });
+      const plan = parseStructuredFreeChatResponse(result.text);
       if (!["chat", "image"].includes(String(plan.action))) error("模型返回的任务类型无法识别，不会自动调用图片模型。");
+      proposedMemory = normalizeFreeChatMemory(plan.memory);
       textOnly = plan.action === "chat"; reply = text(plan.reply, "模型回复", 12000, false);
       if (!textOnly) {
         content = text(plan.prompt, "图片要求", 12000);
@@ -288,7 +312,7 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
       }
     }
     if (textOnly) {
-      if (!reply) reply = (await directText({ provider, beforeRequest, signal: controller.signal, images, systemPrompt: getAgent(agentId).systemPrompt, userPrompt: content })).text;
+      if (!reply) reply = (await directText({ provider, beforeRequest, signal: controller.signal, images, systemPrompt: getAgent(agentId).systemPrompt, userPrompt: free ? freeContext : content })).text;
       await session.store.update((state) => {
         const current = state.jobs.find((item) => item.id === job.id) || error("任务不存在");
         if (controller.signal.aborted || session.lifecycle.signal.aborted || current.status === "cancelled") throw new DOMException("已取消", "AbortError");
@@ -296,6 +320,7 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
         state.messages.push({ id: crypto.randomUUID(), jobId: job.id, projectId: job.projectId, role: "assistant", content: reply, createdAt: now(), agentId: job.agentId });
         Object.assign(current, { status: "succeeded", progress: 100, stage: "completed", stageLabel: "已完成", updatedAt: now() });
       });
+      if (free) await commitFreeChatMemory(session, job.projectId, memoryBefore, proposedMemory).catch((reason) => console.warn("自由对话记忆保存失败", reason));
       changed(job.id); return;
     }
     settings.resolution = free ? String(body.resolution || "1K") : String(settings.resolution || "1K");
@@ -304,38 +329,50 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
     settings.outputCount = Math.max(1, Math.min(100, count));
     const promptInput = { project, content, assets, agentId, settings };
     // Analysis and final-image selection use the same local policies as the UI.
-    if (designPlan) {
+    if (settings.transparentExport === true || settings.explodedView === true) {
+      // These are constrained presentation tasks, not a new design-route plan.
+    } else if (designPlan) {
       // Free chat already planned this same paid task in its one text call.
     } else if (typeof settings.preparedDesignPlan === "string") {
-      let prepared: unknown; try { prepared = JSON.parse(settings.preparedDesignPlan); } catch { error("已整理的设计路线无效，请重新整理后再生成"); }
-      designPlan = parseBrowserDesignPlan(JSON.stringify({ ...(prepared as Json), prompt: job.prompt }), project.name, count).designPlan;
-    } else {
+      try { designPlan = assertUsableDesignPlan(JSON.parse(settings.preparedDesignPlan), count); }
+      catch { /* Discard an unusable old draft and run the same automatic analysis. */ }
+    }
+    if (!designPlan && settings.transparentExport !== true && settings.explodedView !== true) {
       const enhanced = browserEnhancementMessages(promptInput);
-      const planned = await directText({ provider, beforeRequest, signal: controller.signal, images, ...enhanced });
+      const planned = await directText({ provider, beforeRequest, signal: controller.signal, images, ...enhanced, maxTokens: planningTokenBudget(count), jsonOutput: true });
       designPlan = parseBrowserDesignPlan(planned.text, project.name, count).designPlan;
     }
+    if (designPlan) designPlan = applyDesignControls(designPlan, settings, content);
     const finalAssets = browserFinalImageAssets({ ...promptInput, designPlan });
     const finalImages = finalAssets === assets ? images : await imageInputs(session, finalAssets);
-    const imagePrompt = buildBrowserImagePrompt({ ...promptInput, designPlan, count });
+    const freeMemoryNote = free && memoryBefore ? `\n\n已确认的项目设计设定（仅文字信息；本轮要求优先，旧图片仍须本轮选中）：\n${memoryBefore}` : "";
+    const imagePrompt = buildBrowserImagePrompt({ ...promptInput, designPlan, count }) + freeMemoryNote;
     await patchJob(session, job.id, { stage: "generating", progress: 15, totalOutputs: count, completedOutputs: 0, stageLabel: `正在直连生成 0/${count} 张` });
     const saved: Asset[] = [];
-    const imageSystemPrompt = isPackagingWorkflow(settings.workflowKind)
-      ? `你是包装设计图像生成助手。${PACKAGING_CONTRACT}${packagingBoardContract(settings.boardItems)}`
+    const imageSystemPrompt = settings.transparentExport === true
+      ? "你是产品图片抠图助手。只移除背景并输出真实透明像素，严格保持产品本体的造型、比例、颜色、材质、标识、视角与细节；不重设计，不添加物体，不绘制棋盘格。"
+      : settings.explodedView === true
+      ? "你是工业产品概念爆炸图助手。只拆分输入图片中可见或有资料依据的外壳与部件，保持原产品身份、形状、颜色和相对装配顺序；用清晰间距展示部件关系，不臆造内部结构。结果仅供设计沟通，不是工程装配图。"
+      : free && settings.transparentBackground === true
+      ? "你是工业设计图片生成助手。严格执行本轮设计要求，只呈现目标产品并输出真实透明背景像素；不要绘制白底、场景或棋盘格，不改写用户明确要求的产品结构与细节。"
+      : isPackagingWorkflow(settings.workflowKind)
+      ? `你是包装设计图像生成助手。${isPackagingInsertDirection(settings.designDirection) ? `${packagingModeContract(settings.designDirection)}${packagingBoardContract(settings.boardItems, settings.designDirection)}` : `${PACKAGING_CONTRACT}${packagingBoardContract(settings.boardItems)}`}`
       : isDetailWorkflow(settings.workflowKind)
       ? "你是产品详情图生成助手。严格执行本轮用户任务、图像合同和素材角色；每次只输出一张完整展示图。"
       : getAgent(agentId).systemPrompt;
-    const output = await directImages({ provider, beforeRequest, signal: controller.signal, images: finalImages, systemPrompt: imageSystemPrompt, userPrompt: imagePrompt, promptForIndex: (index) => buildBrowserImagePrompt({ ...promptInput, designPlan, count, index }), count, resolution: String(settings.resolution) as "1K" | "2K" | "4K", aspectRatio: String(settings.aspectRatio), onImage: async (image) => {
+    const output = await directImages({ provider, beforeRequest, signal: controller.signal, images: finalImages, systemPrompt: imageSystemPrompt, userPrompt: imagePrompt, promptForIndex: (index) => buildBrowserImagePrompt({ ...promptInput, designPlan, count, index }) + freeMemoryNote, count, resolution: String(settings.resolution) as "1K" | "2K" | "4K", aspectRatio: String(settings.aspectRatio), transparentBackground: settings.transparentBackground === true || free && body.transparentBackground === true, onImage: async (image) => {
       if (controller.signal.aborted) throw new DOMException("已取消", "AbortError");
       const state = await session.store.getState();
       const sequence = state.assets.filter((asset) => asset.projectId === job.projectId && (asset.origin === "generated" || asset.role === "result")).length + 1;
       const extension = image.blob.type.includes("jpeg") ? "jpg" : image.blob.type.includes("webp") ? "webp" : "png";
-      const asset = await newAsset(session, job.projectId, image.blob, `方案 ${String(sequence).padStart(3, "0")}.${extension}`, "result", "generated"); saved.push(asset);
-      await patchJob(session, job.id, { completedOutputs: saved.length, progress: Math.round(15 + 80 * saved.length / count), stageLabel: `已生成并保存到本机 ${saved.length}/${count} 张` });
+      const transparent = settings.transparentBackground === true;
+      const asset = await newAsset(session, job.projectId, image.blob, `${settings.transparentExport === true ? "透明背景" : "方案"} ${String(sequence).padStart(3, "0")}.${extension}`, "result", "generated", transparent ? { tags: ["透明背景"] } : {}); saved.push(asset);
+      await patchJob(session, job.id, { result: { jobId: job.id, status: "running", provider: provider.name || provider.type, model: provider.imageModel || "当前图片模型", prompt: content, imageUrls: saved.map((item) => item.url), imageAssets: [...saved], requestedCount: count, deliveredCount: saved.length, savedCount: saved.length }, completedOutputs: saved.length, progress: Math.round(15 + 80 * saved.length / count), stageLabel: `已生成并保存到本机 ${saved.length}/${count} 张` });
     } });
     const result: GenerationResult = { jobId: job.id, status: "succeeded", provider: output.provider, model: output.model, prompt: imagePrompt, imageUrls: saved.map((asset) => asset.url), imageAssets: saved, requestedCount: count, deliveredCount: saved.length, savedCount: saved.length,
-      requestSnapshot: free ? { endpoint: "/api/free-chat", content: job.prompt, assetIds: job.selectedAssetIds || assets.map((asset) => asset.id), resolution: String(settings.resolution) as "1K" | "2K" | "4K", aspectRatio: String(settings.aspectRatio) as "auto", boardItems: Number(settings.boardItems), showDimensions: typeof body.showDimensions === "boolean" ? body.showDimensions : undefined } : { endpoint: "/api/messages", content: job.prompt, agentId: job.agentId, assetIds: assets.map((asset) => asset.id), settings },
+      requestSnapshot: free ? { endpoint: "/api/free-chat", content: job.prompt, assetIds: job.selectedAssetIds || assets.map((asset) => asset.id), resolution: String(settings.resolution) as "1K" | "2K" | "4K", aspectRatio: String(settings.aspectRatio) as "auto", boardItems: Number(settings.boardItems), showDimensions: typeof body.showDimensions === "boolean" ? body.showDimensions : undefined, transparentBackground: body.transparentBackground === true } : { endpoint: "/api/messages", content: job.prompt, agentId: job.agentId, assetIds: assets.map((asset) => asset.id), settings },
       startedAt: job.createdAt, completedAt: now(), note: output.failureSummary,
-      settingsSnapshot: { agentId: job.agentId, workflowKind: String(settings.workflowKind || "shape") as "shape", direction: String(settings.designDirection || "造型焕新"), showDimensions: settings.multiViewBoard || (free && typeof body.showDimensions === "boolean") ? settings.showDimensions !== false : undefined, reconstructionRatio: Number(settings.reconstructionRatio || 0), resolution: String(settings.resolution) as "1K" | "2K" | "4K", outputCount: count, boardItems: Number(settings.boardItems), generationMode: String(settings.generationMode || "text") as "text", aspectRatio: String(settings.aspectRatio) as "auto", sourceAssetIds: assets.filter((asset) => asset.role === "structure").map((asset) => asset.id), referenceAssetIds: assets.filter((asset) => asset.role === "style").map((asset) => asset.id) },
+      settingsSnapshot: { agentId: job.agentId, workflowKind: String(settings.workflowKind || "shape") as "shape", direction: String(settings.designDirection || "造型焕新"), showDimensions: settings.multiViewBoard || (free && typeof body.showDimensions === "boolean") ? settings.showDimensions !== false : undefined, reconstructionRatio: Number(settings.reconstructionRatio || 0), ...(referenceStrengthAvailable({ assets, generationMode: settings.generationMode, workflowKind: settings.workflowKind, agentId: job.agentId }) ? { referenceStrength: normalizeReferenceStrength(settings.referenceStrength) } : {}), resolution: String(settings.resolution) as "1K" | "2K" | "4K", outputCount: count, boardItems: Number(settings.boardItems), generationMode: String(settings.generationMode || "text") as "text", aspectRatio: String(settings.aspectRatio) as "auto", sourceAssetIds: assets.filter((asset) => asset.role === "structure").map((asset) => asset.id), referenceAssetIds: assets.filter((asset) => asset.role === "style").map((asset) => asset.id) },
     };
     await session.store.update((state) => {
       const current = state.jobs.find((item) => item.id === job.id) || error("任务不存在");
@@ -346,6 +383,7 @@ async function performJob(session: LocalContext, job: GenerationJob, body: Json,
       state.messages.push({ id: crypto.randomUUID(), jobId: job.id, projectId: job.projectId, role: "assistant", content: `已生成 ${canonical.length} 张图片，已保存到本机浏览器。${output.failureSummary ? `\n${output.failureSummary}` : ""}`, createdAt: now(), agentId: job.agentId, assets: canonical, generation: latestResult });
       Object.assign(current, { status: "succeeded", progress: 100, stage: "completed", stageLabel: "已完成", result: latestResult, updatedAt: now() });
     });
+    if (free) await commitFreeChatMemory(session, job.projectId, memoryBefore, proposedMemory).catch((reason) => console.warn("自由对话记忆保存失败", reason));
     changed(job.id);
   } catch (reason) {
     await patchJob(session, job.id, { status: controller.signal.aborted ? "cancelled" : "failed", progress: 100, error: reason instanceof Error ? reason.message : "本机生成失败；不会自动重试", recoveryAvailable: false }).catch(() => {});
@@ -384,7 +422,7 @@ async function localApi(session: LocalContext, path: string, url: URL, method: s
     if (projectPath[2] === "export" && method === "POST") { const { exportLocalProjectImages } = await import("@/lib/browser-local-archive"); return new Response(await exportLocalProjectImages(session.store, id, readBody()), { headers: { "Content-Type": "application/zip" } }); }
     if (projectPath[2] === "results" && method === "GET") return respond({ results: state.assets.filter((asset) => asset.projectId === id && asset.origin === "generated").map((asset) => ({ asset, generation: state.messages.find((message) => message.generation?.imageAssets?.some((item) => item.id === asset.id))?.generation })) });
     if (!projectPath[2] && method === "GET") return respond({ project });
-    if (!projectPath[2] && method === "PATCH") { const body = readBody(); const next = await session.store.update((draft) => { const current = projectOf(draft.projects, id); if (body.workspaceState) current.workspaceState = normalizeProjectWorkspaceState({ ...current.workspaceState, ...(body.workspaceState as Project["workspaceState"]) }); if (body.canvas) current.canvas = canvasState(body.canvas, draft.assets, id); cleanWorkspaceReferences(current, draft.assets); current.updatedAt = now(); return current; }); return respond({ project: next }); }
+    if (!projectPath[2] && method === "PATCH") { const body = readBody(); const next = await session.store.update((draft) => { const current = projectOf(draft.projects, id); if (body.workspaceState) current.workspaceState = normalizeProjectWorkspaceState({ ...current.workspaceState, ...(body.workspaceState as Project["workspaceState"]) }); if (body.freeChatMemory !== undefined) current.freeChatMemory = normalizeFreeChatMemory(text(body.freeChatMemory, "自由对话记忆", FREE_CHAT_MEMORY_LIMIT, false)); if (body.canvas) current.canvas = canvasState(body.canvas, draft.assets, id); cleanWorkspaceReferences(current, draft.assets); current.updatedAt = now(); return current; }); return respond({ project: next }); }
   }
   if (["/api/conversations", "/api/messages"].includes(path) && method === "GET") {
     const id = text(url.searchParams.get("projectId"), "项目编号", 512); projectOf(state.projects, id);
@@ -440,6 +478,7 @@ async function localApi(session: LocalContext, path: string, url: URL, method: s
   if (jobPath && method === "DELETE") { const id = decodeURIComponent(jobPath[1]); if (!state.jobs.some((job) => job.id === id)) error("任务不存在", 404); controllers.get(id)?.abort(); await patchJob(session, id, { status: "cancelled", error: "已取消；已发送的供应商请求可能已计费，请核对账单。" }); return respond({ job: (await session.store.getState()).jobs.find((job) => job.id === id) }); }
   if (["/api/prompt-enhance", "/api/free-chat/enhance"].includes(path) && method === "POST") {
     const body = readBody(); const project = projectOf(state.projects, text(body.projectId, "项目编号", 512)); const ids = list(body.assetIds || []); const free = path.includes("free-chat"); const assets = selectedLocalAssets(state.assets, project.id, ids, free); const provider = await activeLocalProvider(session.store);
+    if (!free && body.referenceStrength !== undefined) validateReferenceStrength(body.referenceStrength);
     if (!free && isPackagingWorkflow(body.workflowKind)) {
       if (body.agentId !== "appearance-variants") error("包装设计请选择外观方案工作流；本次尚未调用模型。");
       validatePackagingAssets(assets, body.generationMode);
@@ -449,7 +488,7 @@ async function localApi(session: LocalContext, path: string, url: URL, method: s
       validateDetailAssets(assets, body.generationMode);
     }
     const input = { project, content: String(free ? body.content : body.draft || ""), draft: String(free ? body.content : body.draft || ""), assets, agentId: String(body.agentId || "appearance-variants") as AgentId, settings: { ...body, userRequirements: String(body.draft || body.content || "") } as Record<string, string | number | boolean> };
-    const messages = browserEnhancementMessages(input); const result = await directText({ provider, images: await imageInputs(session, assets), ...messages, beforeRequest: async () => { await checkBrowserAuthorization(session.user.id); }, signal: init.signal || undefined });
+    const messages = browserEnhancementMessages(input); const result = await directText({ provider, images: await imageInputs(session, free ? assets : referenceAssetsForStrength(assets, { strength: body.referenceStrength, generationMode: body.generationMode, workflowKind: body.workflowKind, agentId: body.agentId })), ...messages, jsonOutput: true, maxTokens: planningTokenBudget(body.outputCount), beforeRequest: async () => { await checkBrowserAuthorization(session.user.id); }, signal: init.signal || undefined });
     return json({ ...parseBrowserDesignPlan(result.text, project.name, Number(body.outputCount) || 1), provider: result.provider, model: result.model });
   }
   if (["/api/messages", "/api/free-chat"].includes(path) && method === "POST") {
@@ -459,6 +498,7 @@ async function localApi(session: LocalContext, path: string, url: URL, method: s
     if (!free && !agents.some((agent) => agent.id === agentId)) error("设计模式无效");
     if (!free) {
       const settings = body.settings as Record<string, string | number | boolean> || {};
+      if (settings.referenceStrength !== undefined) validateReferenceStrength(settings.referenceStrength);
       const issue = parameterAssetError(assets, String(settings.generationMode || "text")); if (issue) error(issue);
       if (isPackagingWorkflow(settings.workflowKind)) {
         if (agentId !== "appearance-variants") error("包装设计请选择外观方案工作流；本次尚未创建任务。");

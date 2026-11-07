@@ -1,18 +1,55 @@
+import { readFileSync, statSync } from "node:fs";
+import { dataPath } from "@/lib/data-path";
 import type { ImageOutput, ImageProvider, ProviderContext, TextOutput, TextProvider } from "./types";
 import { ProviderError } from "./types";
 
 type GatewayTextResponse = { text?: string; provider?: string; model?: string };
 type GatewayImageResponse = { imageUrls?: string[]; provider?: string; model?: string; revisedPrompt?: string };
+type GatewayCredentials = { url: string; token: string };
 
-function gatewayUrl() {
-  return process.env.MODEL_GATEWAY_URL?.trim().replace(/\/$/, "") || "";
+const LICENSE_GATEWAY_FILE = "license-gateway.json";
+
+function trimmedEnv(name: string) {
+  return process.env[name]?.trim() || "";
+}
+
+function licenseGatewayConfig(): GatewayCredentials {
+  try {
+    const file = dataPath(LICENSE_GATEWAY_FILE);
+    if (statSync(file).size > 16 * 1024) return { url: "", token: "" };
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { url: "", token: "" };
+    const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
+    const rawUrl = typeof parsed.url === "string" ? parsed.url.trim() : "";
+    if (!rawUrl) return { url: "", token: safeToken(token) };
+    const url = new URL(rawUrl);
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) return { url: "", token: safeToken(token) };
+    return { url: url.toString().replace(/\/$/, ""), token: safeToken(token) };
+  } catch {
+    return { url: "", token: "" };
+  }
+}
+
+function safeToken(token: string) {
+  if (!token || token.length > 4096 || /[\u0000-\u001f\u007f]/.test(token)) return "";
+  return token;
+}
+
+/** Env wins. A customer machine can instead drop url/token into the data dir. */
+function gatewayCredentials(): GatewayCredentials {
+  const urlFromEnv = trimmedEnv("MODEL_GATEWAY_URL").replace(/\/$/, "");
+  const tokenFromEnv = safeToken(trimmedEnv("MODEL_GATEWAY_TOKEN"));
+  if (urlFromEnv && tokenFromEnv) return { url: urlFromEnv, token: tokenFromEnv };
+  const file = licenseGatewayConfig();
+  return { url: urlFromEnv || file.url, token: tokenFromEnv || file.token };
 }
 
 async function gatewayRequest<T>(pathname: string, body: unknown, timeout: number, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${gatewayUrl()}${pathname}`, {
+  const { url, token } = gatewayCredentials();
+  const response = await fetch(`${url}${pathname}`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.MODEL_GATEWAY_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       "X-Client": "industrial-design-agents-desktop",
     },
@@ -50,7 +87,8 @@ export class ModelGatewayProvider implements TextProvider, ImageProvider {
 
   isConfigured() {
     if (process.env.WEB_MODE === "true" && process.env.DESKTOP_MODE !== "true") return false;
-    return Boolean(gatewayUrl() && process.env.MODEL_GATEWAY_TOKEN);
+    const { url, token } = gatewayCredentials();
+    return Boolean(url && token);
   }
 
   async generateText(context: ProviderContext): Promise<TextOutput> {

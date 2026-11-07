@@ -117,11 +117,12 @@ const APIYI_IMAGE_SAMPLES_USD: Record<string, readonly number[]> = {
   "gemini-3-pro-image-preview": [0.090000],
 };
 
-// AIHubMix 用户 2026-10-13 与 2026-10-14 提供的独立账户样本（含 10-12 的记录）；
+// AIHubMix 用户 2026-10-13、10-14 与 10-30 提供的独立账户样本（含 10-12 的记录）；
 // 9 输入 / 37 输出的 $0.000146 是连接测试，
-// 不进入完整文字分析参考。Gemini 图片型号按截图原始 ID 保留，不跨 preview 型号套价。
+// 不进入完整文字分析参考。Gemini 图片账单按截图原始 ID 保留；
+// 默认 preview 仅借用同系列正式型号的均价作展示和预算，不伪造 preview 扣费样本。
 const AIHUBMIX_TEXT_SAMPLES_USD: Record<string, readonly number[]> = {
-  "gemini-3.8-flash": [0.007236, 0.006892, 0.006044],
+  "gemini-3.8-flash": [0.007236, 0.006892, 0.006044, 0.003678],
   "gemini-3.7-flash": [0.005624, 0.004862, 0.007758, 0.003378, 0.004364, 0.005928, 0.006050, 0.006546],
   "gemini-3.6-flash": [0.010724],
   "gpt-6.1-sol": [0.022754],
@@ -134,7 +135,7 @@ const AIHUBMIX_TEXT_SAMPLES_USD: Record<string, readonly number[]> = {
 const AIHUBMIX_IMAGE_SAMPLES_USD: Record<string, readonly number[]> = {
   "gemini-nano-banana-2.1": [0.044444],
   "gemini-2.5-flash-image": [0.040356, 0.040300, 0.040166],
-  "gemini-3.1-flash-image": [0.068664],
+  "gemini-3.1-flash-image": [0.068664, 0.069066],
   "gemini-3-pro-image": [0.145378],
   "gpt-image-1.5": [0.0226916],
   "gpt-image-2": [0.022526],
@@ -184,15 +185,6 @@ const RELAYROUTER_UPSTREAM_TEXT_RATES_USD: Record<string, { inputPerMillion: num
   "gpt-5.6-terra": { inputPerMillion: 2, outputPerMillion: 12 },
 };
 
-// AIHubMix 官网列出的 gemini-3.1-flash-image-preview 按 token 费率。
-// 当前没有该供应商账号的单次扣费样本，不能据此推定每张图片的价格。
-const AIHUBMIX_PREVIEW_IMAGE_TOKEN_RATES_USD = {
-  inputPerMillion: 0.5,
-  outputPerMillion: 3,
-  sourceUrl: "https://api.aihubmix.com/model/gemini-3.1-flash-image-preview",
-  sourceDate: "2026-10-27",
-} as const;
-
 function roundCny(amount: number) { return Math.round(amount * 1_000_000) / 1_000_000; }
 
 /** Keep tiny estimated text charges legible without displaying a non-zero amount as ¥0.00. */
@@ -221,8 +213,10 @@ export const APIYI_TEXT_PRICE_REFERENCES = buildMeasuredReferences("text", APIYI
 export const APIYI_IMAGE_PRICE_REFERENCES = buildMeasuredReferences("image", APIYI_IMAGE_SAMPLES_USD);
 export const APIYI_ESTIMATED_TEXT_PRICE = APIYI_TEXT_PRICE_REFERENCES[DEFAULT_TEXT_MODEL].meanCny;
 export const APIYI_ESTIMATED_IMAGE_PRICE = APIYI_IMAGE_PRICE_REFERENCES[APIYI_IMAGE_MODEL].meanCny;
-export const AIHUBMIX_TEXT_PRICE_REFERENCES = buildMeasuredReferences("text", AIHUBMIX_TEXT_SAMPLES_USD, "2026-10-12 至 2026-10-14", "2026-10-14");
-export const AIHUBMIX_IMAGE_PRICE_REFERENCES = buildMeasuredReferences("image", AIHUBMIX_IMAGE_SAMPLES_USD, "2026-10-12 至 2026-10-14", "2026-10-14");
+export const AIHUBMIX_TEXT_PRICE_REFERENCES = buildMeasuredReferences("text", AIHUBMIX_TEXT_SAMPLES_USD, "2026-10-12 至 2026-10-30", "2026-10-30");
+export const AIHUBMIX_IMAGE_PRICE_REFERENCES = buildMeasuredReferences("image", AIHUBMIX_IMAGE_SAMPLES_USD, "2026-10-12 至 2026-10-30", "2026-10-30");
+const AIHUBMIX_PREVIEW_IMAGE_MODEL = "gemini-3.1-flash-image-preview";
+const AIHUBMIX_PREVIEW_IMAGE_PROXY_PRICE_CNY = AIHUBMIX_IMAGE_PRICE_REFERENCES["gemini-3.1-flash-image"].meanCny;
 export const RELAYROUTER_TEXT_PRICE_REFERENCES = buildMeasuredReferences("text", RELAYROUTER_TEXT_SAMPLES_USD, "2026-10-27", "2026-10-27");
 export const RELAYROUTER_IMAGE_PRICE_REFERENCES = buildMeasuredReferences("image", RELAYROUTER_IMAGE_SAMPLES_USD, "2026-10-27", "2026-10-27");
 export const AIHUBMIX_ESTIMATED_TEXT_PRICE = AIHUBMIX_TEXT_PRICE_REFERENCES[DEFAULT_TEXT_MODEL].meanCny;
@@ -279,7 +273,18 @@ export function defaultImageModelForProvider(providerType: string) {
   return DEFAULT_IMAGE_MODEL;
 }
 
+/** A historic custom connection can still point directly at RelayRouter's API. */
+export function pricingProviderType(providerType: string, baseUrl: string) {
+  if (providerType !== "openai-compatible") return providerType;
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol === "https:" && !url.username && !url.password && url.hostname === "api.relayrouter.ai") return "relayrouter";
+  } catch { /* An incomplete custom URL has no known supplier prices. */ }
+  return providerType;
+}
+
 export function providerTextPrice(providerType: string, model: string) {
+  model = model.trim();
   return providerType === "geekai" ? TEXT_ANALYSIS_ESTIMATES[model]
     : providerType === "apiyi" ? APIYI_TEXT_PRICE_REFERENCES[model]?.meanCny
       : providerType === "aihubmix" ? AIHUBMIX_TEXT_PRICE_REFERENCES[model]?.meanCny
@@ -287,9 +292,10 @@ export function providerTextPrice(providerType: string, model: string) {
 }
 
 export function providerImagePrice(providerType: string, model: string) {
+  model = model.trim();
   return providerType === "geekai" ? IMAGE_MODEL_PRICES[model]
     : providerType === "apiyi" ? APIYI_IMAGE_PRICE_REFERENCES[model]?.meanCny
-      : providerType === "aihubmix" ? AIHUBMIX_IMAGE_PRICE_REFERENCES[model]?.meanCny ?? getPublishedModelPriceEstimate(providerType, model)?.estimatedCny
+      : providerType === "aihubmix" ? AIHUBMIX_IMAGE_PRICE_REFERENCES[model]?.meanCny ?? (model === AIHUBMIX_PREVIEW_IMAGE_MODEL ? AIHUBMIX_PREVIEW_IMAGE_PROXY_PRICE_CNY : getPublishedModelPriceEstimate(providerType, model)?.estimatedCny)
         : providerType === "relayrouter" ? RELAYROUTER_IMAGE_PRICE_REFERENCES[model]?.meanCny
           ?? (RELAYROUTER_PUBLISHED_IMAGE_PER_CALL_USD[model] === undefined ? undefined : roundCny(RELAYROUTER_PUBLISHED_IMAGE_PER_CALL_USD[model] * APIYI_REFERENCE_EXCHANGE_RATE.usdToCny)) : undefined;
 }
@@ -314,8 +320,9 @@ export function getSelectableImageModels(providerType: string, catalog: readonly
   const current = currentModel.trim();
   const unique = [...new Set([...candidates, ...(current && !isKnownImageModel(current) && !isSelectableImageModel(current) ? [current] : [])])];
   const recommended = defaultImageModelForProvider(providerType);
-  return unique.sort((left, right) => modelFamily(left) - modelFamily(right)
-    || Number(right === recommended) - Number(left === recommended)
+  const priority = (model: string) => model === recommended ? 0 : model === "gemini-nano-banana-2.1" ? 1 : 2;
+  return unique.sort((left, right) => priority(left) - priority(right)
+    || modelFamily(left) - modelFamily(right)
     || modelRecency(left, right));
 }
 
@@ -379,6 +386,7 @@ export function getUnavailableImageModelReason(providerType: string, model: stri
 }
 
 export function getModelPriceReference(providerType: string, model: string, kind: ModelPriceKind) {
+  model = model.trim();
   if (providerType === "apiyi") return (kind === "text" ? APIYI_TEXT_PRICE_REFERENCES : APIYI_IMAGE_PRICE_REFERENCES)[model];
   if (providerType === "aihubmix") return (kind === "text" ? AIHUBMIX_TEXT_PRICE_REFERENCES : AIHUBMIX_IMAGE_PRICE_REFERENCES)[model];
   if (providerType === "relayrouter") return (kind === "text" ? RELAYROUTER_TEXT_PRICE_REFERENCES : RELAYROUTER_IMAGE_PRICE_REFERENCES)[model];
@@ -391,6 +399,7 @@ export function providerPricingNotice(providerType: string) {
 }
 
 export function modelReferencePriceDescription(providerType: string, model: string, kind: ModelPriceKind) {
+  model = model.trim();
   if (kind === "image" && getUnavailableImageModelReason(providerType, model)) return providerType === "apiyi" ? "当前账户无可用通道 · 请改选" : "当前预设不支持 · 请改选";
   const reference = getModelPriceReference(providerType, model, kind);
   if (reference) return `约 ¥${reference.meanCny.toFixed(reference.meanCny < 0.01 ? 4 : 3)}/次`;
@@ -403,15 +412,26 @@ export function modelReferencePriceDescription(providerType: string, model: stri
     if (publishedCallPrice !== undefined) return `官网标价约 ¥${(publishedCallPrice * APIYI_REFERENCE_EXCHANGE_RATE.usdToCny).toFixed(3)}/次`;
     if (model === "gpt-image-2") return `官网按量：输入 ¥${(RELAYROUTER_GPT_IMAGE_2_TOKEN_RATES_USD.inputPerMillion * APIYI_REFERENCE_EXCHANGE_RATE.usdToCny).toFixed(2)}/百万Token，输出 ¥${(RELAYROUTER_GPT_IMAGE_2_TOKEN_RATES_USD.outputPerMillion * APIYI_REFERENCE_EXCHANGE_RATE.usdToCny).toFixed(2)}/百万Token`;
   }
-  if (providerType === "aihubmix" && kind === "image" && model === DEFAULT_IMAGE_MODEL) {
-    const rates = AIHUBMIX_PREVIEW_IMAGE_TOKEN_RATES_USD;
-    return `官网按量：输入 ¥${(rates.inputPerMillion * APIYI_REFERENCE_EXCHANGE_RATE.usdToCny).toFixed(2)}/百万Token，输出 ¥${(rates.outputPerMillion * APIYI_REFERENCE_EXCHANGE_RATE.usdToCny).toFixed(2)}/百万Token`;
+  if (providerType === "aihubmix" && kind === "image" && model === AIHUBMIX_PREVIEW_IMAGE_MODEL) {
+    return `约 ¥${AIHUBMIX_PREVIEW_IMAGE_PROXY_PRICE_CNY.toFixed(3)}/次`;
   }
   const publishedEstimate = kind === "image" ? getPublishedModelPriceEstimate(providerType, model) : undefined;
   if (publishedEstimate) return `约 ¥${publishedEstimate.estimatedCny.toFixed(3)}/次`;
   const price = kind === "text" ? providerTextPrice(providerType, model) : providerImagePrice(providerType, model);
   return price === undefined ? "费用待统计"
     : kind === "text" ? `约 ¥${price.toFixed(3)}/次` : `约 ¥${price.toFixed(2)}/张`;
+}
+
+/** Keep an unknown model visible in the diagnostic instead of implying a known price. */
+export function connectionModelPriceDescription(providerType: string, baseUrl: string, model: string, kind: ModelPriceKind, appVersion = "") {
+  const resolvedType = pricingProviderType(providerType, baseUrl);
+  const referenceType = providerType === "openai-compatible" && resolvedType === "relayrouter" && kind === "image" && !isRelayRouterImageModel(model) ? providerType : resolvedType;
+  const description = modelReferencePriceDescription(referenceType, model, kind);
+  if (resolvedType === "relayrouter" && kind === "image" && description === "当前预设不支持 · 请改选" && model.trim()) {
+    return `当前型号未适配（模型 ID：${model.trim()}；${appVersion ? `软件版本 ${appVersion}` : "请核对软件版本"}）；请改选已适配图片模型。`;
+  }
+  if (description !== "费用待统计" || !model.trim()) return description;
+  return `暂无该型号参考价（模型 ID：${model.trim()}）；请核对模型 ID 与软件版本${appVersion ? ` ${appVersion}` : ""}。`;
 }
 
 export function imageModelLabel(model: string, providerType = "geekai") {

@@ -1,16 +1,15 @@
+import { shapeVariationPrompt } from "@/lib/generation-controls";
 import type { NaturalDesignIntent } from "@/lib/services/natural-intent";
 
 export const HIGH_RECONSTRUCTION_THRESHOLD = 65;
 export const CONCEPT_REDRAW_THRESHOLD = 85;
 
 /**
- * Whole-product appearance redesigns need a different final-image contract once
- * the slider reaches the large-redesign range. The source and style images have
- * already been analyzed by the design planner at this point. Keeping any of the
- * full pixel inputs in the paid image call either anchors the result to the old
- * silhouette or lets a style reference become the replacement product.
+ * The slider changes the permitted appearance variation, never the identity
+ * evidence. Every level keeps the selected source and eligible style images in
+ * the final request; high reconstruction only selects a stronger design brief.
  */
-export function usesAnalysisOnlyFinalImage(input: {
+export function usesHighReconstruction(input: {
   agentId?: string;
   generationMode?: unknown;
   workflowKind?: unknown;
@@ -35,9 +34,9 @@ export function usesAnalysisOnlyFinalImage(input: {
 
 export function highReconstructionPrompt(ratio: number, selectedDirection: string, label: string) {
   const value = Math.max(HIGH_RECONSTRUCTION_THRESHOLD, Math.min(100, Math.trunc(Number(ratio) || 0)));
-  const shared = `产品原图和全部设计参考图已经在前置视觉分析阶段逐张读取；正式生图阶段不附带任何上传图片的原始像素，只使用分析得到的产品类别、核心功能、关键部件数量与结构拓扑、相机语义和抽象设计语言。这样既不能复刻原产品外观，也不能把某张参考产品换角度充当结果。必须保留前置分析列出的品类、功能、安全、人机、关键部件数量、前后左右布局与连接关系；不得复制任何参考图主体、文字、水印、商标、背景或版式。用户未明确要求换角度时，按前置分析记录的观察方向、透视和产品姿态生成，不能靠换镜头冒充重构。`;
+  const shared = `正式生图持续读取主产品原图、同一产品辅助角度和本轮允许的设计参考图，并结合已确认的视觉分析。主产品原图确定实际设计对象、品类、功能、部件层级和结构关系；项目名称仅辅助理解，不能把图片中的局部产品或独立部件补成另一层级的整机，也不能擅自替换功能或工作原理。重构比例只控制允许改变的外观，不降低这些身份约束。保留可验证的核心功能、安全、人机、必要安装接口及功能部件数量；外壳轮廓、外观比例、装饰分件和视觉体块布局不作为功能锁定；从参考图提炼被允许的体块、曲面、线条、格栅或CMF等设计语言，转译到同一目标产品，不复制参考主体、文字、水印、商标、背景或版式。用户未明确要求换角度时，保持原图的观察方向、透视和产品姿态，不能靠换镜头冒充重构。`;
   if (value >= CONCEPT_REDRAW_THRESHOLD) {
-    return `本张按 ${value}% 执行，进入 85–100% 概念级重绘模式。${shared}在上述硬约束成立的前提下，按「${selectedDirection}」和本张独立路线「${label}」建立全新的视觉身份；最大化重设整体轮廓、长宽高比例、视觉重心、主体架构、主次体块、功能区包络、分件方式与标志性特征面。结果必须明显属于同一产品品类和功能体系，但不能像原产品的小改款、换色版或圆角微调版。`;
+    return `${shapeVariationPrompt(value)}本张按 ${value}% 执行，进入 85–100% 概念级重绘模式。${shared}在上述硬约束成立的前提下，按「${selectedDirection}」和本张独立路线「${label}」建立全新的视觉身份；最大化重设整体轮廓、长宽高比例、视觉重心、主体架构、主次体块、功能区包络、分件方式与标志性特征面。结果必须明显属于同一产品品类和功能体系，但不能像原产品的小改款、换色版或圆角微调版。`;
   }
-  return `本张按 ${value}% 执行，进入 65–84% 大幅重设计模式。${shared}按「${selectedDirection}」和本张独立路线「${label}」重新建立整体外轮廓、比例、视觉重心、主次体块、功能区包络、分件与标志性特征面；其中至少四类必须产生一眼可见的结构化差异，不能只改圆角、局部开孔、颜色、材质或装饰。`;
+  return `${shapeVariationPrompt(value)}本张按 ${value}% 执行，进入 65–84% 大幅重设计模式。${shared}按「${selectedDirection}」和本张独立路线「${label}」重新建立整体外轮廓、比例、视觉重心、主次体块、功能区包络、分件与标志性特征面；其中至少四类必须产生一眼可见的结构化差异，不能只改圆角、局部开孔、颜色、材质或装饰。`;
 }

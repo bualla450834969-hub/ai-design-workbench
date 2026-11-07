@@ -1,0 +1,22 @@
+export type VideoPriceQuote = {
+  status: "verified" | "historical" | "reference" | "unavailable";
+  model: string;
+  resolution?: number;
+  duration: number;
+  currencySymbol: string;
+  currencyCode?: "CNY";
+  sourceCurrency?: "USD" | "CNY";
+  fxRate?: number;
+  fxDate?: string;
+  perSecond?: number;
+  averagePerSecond?: number;
+  billingUnit?: "second" | "task";
+  unitPrice?: number;
+  estimatedTotal?: number;
+  billingGroup?: string;
+  sourceAt?: string;
+  checkedAt: string;
+  lastBillTotal?: number;
+  lastBillDuration?: number;
+  note: string;
+};

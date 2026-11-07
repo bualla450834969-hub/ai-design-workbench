@@ -11,7 +11,7 @@ export type WebTaskPayload = ({
   provider: WebProviderSnapshot;
 } | {
   kind: "free-chat";
-  input: BaseTaskInput & { selectedAssetIds: string[]; resolution?: "1K" | "2K" | "4K"; aspectRatio?: "auto" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16"; boardItems?: number };
+  input: BaseTaskInput & { selectedAssetIds: string[]; resolution?: "1K" | "2K" | "4K"; aspectRatio?: "auto" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16"; boardItems?: number; transparentBackground?: boolean };
   provider: WebProviderSnapshot;
 }) & { webLicenseBindingId: string };
 export interface WebTaskRecord {

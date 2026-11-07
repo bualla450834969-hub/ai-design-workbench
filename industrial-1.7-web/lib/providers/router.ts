@@ -54,7 +54,7 @@ export async function generateCompleteBatch(provider: ImageProvider, context: Pr
   // Never issue an implicit fill request: all returned images belong to the user.
   const batch = await provider.generateImages({
     ...context,
-    settings: { ...context.settings, batchOffset: 0, batchTotal: requested },
+    settings: { ...context.settings, batchOffset: Math.max(0, Number(context.settings?.batchOffset) || 0), batchTotal: Math.max(requested, Number(context.settings?.batchTotal) || requested) },
   }, requested);
   const imageUrls = batch.imageUrls.slice(0, requested).filter(Boolean);
   if (!imageUrls.length) throw new Error("供应商没有返回图片");

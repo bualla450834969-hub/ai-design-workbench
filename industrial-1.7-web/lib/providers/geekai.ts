@@ -1,3 +1,5 @@
+import { shapeVariationPrompt } from "@/lib/generation-controls";
+import { planningTokenBudget, planningNetworkMessage, transientPlanningError } from "@/lib/planning-budget";
 import { readFileSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { ImageOutput, ImageProvider, ProviderContext, TextOutput, TextProvider } from "./types";
@@ -6,15 +8,18 @@ import { assetRoleLabel, sortAssetsByRole } from "@/lib/services/asset-roles";
 import { detectNaturalDesignIntent, DRAWING_STYLE_REFERENCE_CONSTRAINT, isSurfaceEditingTask, multiViewBoardLabel, requestedMultiViewViews, requestedStandardViewCount, resolveMultiViewBoard, standardMultiViewViews, SURFACE_ONLY_CONSTRAINT } from "@/lib/services/natural-intent";
 import type { Asset } from "@/types/domain";
 import { isLocalSurfaceEditing, localSurfaceContract } from "@/lib/services/local-edit-policy";
-import { highReconstructionPrompt, usesAnalysisOnlyFinalImage } from "@/lib/services/reconstruction-policy";
+import { highReconstructionPrompt, usesHighReconstruction } from "@/lib/services/reconstruction-policy";
 import { boardPrompt, normalizeBoardItemCount, normalizeNaturalBoardItemCount } from "@/lib/generation-board";
 import { productIdentityContract, stripGeneratedPromptBoilerplate } from "@/lib/product-identity";
 import { webSafeFetch } from "@/lib/web-network";
 import { assertWebGenerationLicense } from "@/lib/web-generation-license";
 import { isRelayRouterGeminiImageModel, isRelayRouterImageModel } from "@/lib/model-pricing";
-import { isPackagingDielineDirection, isPackagingWorkflow, packagingBoardContract, packagingModeContract, packagingReferenceRules, validatePackagingAssets } from "@/lib/packaging-design";
+import { isPackagingDielineDirection, isPackagingInsertDirection, isPackagingWorkflow, packagingBoardContract, packagingModeContract, packagingReferenceRules, validatePackagingAssets } from "@/lib/packaging-design";
 import { DETAIL_IMAGE_CONTRACT, detailDirectionContract, detailReferenceRules, isDetailWorkflow, validateDetailAssets } from "@/lib/detail-images";
 import { containsDimensionInstruction, sixViewDimensionContract, sixViewSourceFidelityContract } from "@/lib/dimension-annotations";
+import { EXPLODED_VIEW_CONTRACT } from "@/lib/exploded-view";
+import { supportsTransparentBackgroundModel, TRANSPARENT_BACKGROUND_PROMPT, TRANSPARENT_EXPORT_PROMPT } from "@/lib/transparent-background";
+import { finalReferenceAssets, referenceStrengthPrompt } from "@/lib/reference-strength";
 
 export type RuntimeConfig = {
   WEB_USER_ID?: string;
@@ -191,7 +196,8 @@ function isSurfaceOnly(context: ProviderContext) {
 
 type RawReferenceImage = { mimeType: string; data: string };
 type ReferenceImage = RawReferenceImage & { role: Asset["role"]; name: string; primaryProduct: boolean; tags?: string[] };
-type ImageTaskResult = { image: string; prompt: string; designRoute: string; revisedPrompt?: string; seed?: string | number };
+type ImageTaskResult = {
+  index?: number; image: string; prompt: string; designRoute: string; revisedPrompt?: string; seed?: string | number };
 type ChatImagePart = { text?: string; inline_data?: { mime_type?: string; data?: string }; image_url?: string | { url?: string }; url?: string };
 type GeminiGenerateResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string; inlineData?: { mimeType?: string; data?: string }; inline_data?: { mime_type?: string; data?: string }; fileData?: { fileUri?: string } }> } }>;
@@ -250,7 +256,7 @@ async function downloadReference(url: string, signal?: AbortSignal): Promise<Raw
 }
 
 async function imageReferences(context: ProviderContext) {
-  const ordered = sortAssetsByRole(context.assets ?? []).filter((asset) => asset.type.startsWith("image/"));
+  const ordered = sortAssetsByRole(finalReferenceAssets(context.assets ?? [], { hasPlan: Boolean(context.designPlan), strength: context.settings?.referenceStrength, generationMode: context.settings?.generationMode, workflowKind: context.settings?.workflowKind, agentId: context.agentId })).filter((asset) => asset.type.startsWith("image/"));
   const appearance = context.agentId === "appearance-variants";
   const styles = ordered.filter((asset) => asset.role === "style" || asset.role === "scene")
     .sort((left, right) => Number(Boolean(right.tags?.includes("主要设计参考图"))) - Number(Boolean(left.tags?.includes("主要设计参考图"))));
@@ -260,17 +266,7 @@ async function imageReferences(context: ProviderContext) {
   if (appearance && context.settings?.generationMode === "source" && !structures.length) {
     throw new ProviderError("本轮产品原图缺失，请重新选择原图；本次尚未发起出图。", "geekai", false);
   }
-  const analysisOnly = usesAnalysisOnlyFinalImage({
-    agentId: context.agentId,
-    generationMode: context.settings?.generationMode,
-    workflowKind: context.settings?.workflowKind,
-    freeChatAction: context.settings?.freeChatAction,
-    reconstructionRatio: context.settings?.reconstructionRatio,
-    naturalIntent: userIntent(context),
-    surfaceOnly: isSurfaceOnly(context),
-    hasAnnotation: ordered.some((asset) => asset.role === "annotation" || asset.role === "mask"),
-  });
-  const assets = analysisOnly ? [] : appearance ? [...structures, ...styles, ...others] : ordered;
+  const assets = appearance ? [...structures, ...styles, ...others] : ordered;
   const model = pickConfig("GEEKAI_IMAGE_MODEL", "GEEKAI_IMAGE_MODEL").toLowerCase();
   // Google documents 14 references for its current image models. For other
   // relay protocols we keep the previous conservative limit, but never drop inputs silently.
@@ -306,8 +302,9 @@ function referenceRoleLabel(image: ReferenceImage, context: ProviderContext) {
     if (image.role === "structure" || image.role === "result") return "同一产品辅助角度（只补充产品形态与尺寸关系）";
     if (image.role === "style") return "包装设计参考（只借鉴抽象包装形式、材料和风格，不复制品牌商标文字）";
   }
-  if (image.primaryProduct) return isMultiViewContext(context) ? "主产品原图（只锁定产品身份、品类、结构、功能、比例与CMF；不锁定原拍摄视角或拼版布局）" : "主产品原图（决定构图、主要视角、品类、结构、功能与比例）";
+  if (image.primaryProduct) return isMultiViewContext(context) ? "主产品原图（只锁定产品身份、品类、结构、功能、比例与CMF；不锁定原拍摄视角或拼版布局）" : "主产品原图（确认品类、对象层级、功能与必要工程约束；可变外观、比例与体块按本轮重构幅度执行，不作统一锁定）";
   if (image.role === "structure" || image.role === "result") return isMultiViewContext(context) ? "同一产品辅助角度（只补充可见结构依据，不要求复制其视角和布局）" : "同一产品辅助角度（补充不可见结构，不改变主图构图）";
+  if (isMultiViewContext(context) && image.role === "style") return "视图表现辅助参考（默认保持主产品原图的表现形式、材质与光影；只有本轮文字明确要求转换时才采用绘画风格，不复制参考产品或版式）";
   return `${assetRoleLabel(image.role)}${image.tags?.length ? `；参考维度=[${image.tags.join("，")}]` : ""}${image.role === "style" && image.tags?.includes("参考绘画风格") ? `；${DRAWING_STYLE_REFERENCE_CONSTRAINT}` : ""}`;
 }
 
@@ -335,10 +332,10 @@ function multiViewPrompt(context: ProviderContext, index: number, count: number)
   const target = suppliedViews[index + offset] || views[index + offset] || `环绕视角 ${Math.round((index + offset) * 360 / count)}°`;
   const resolution = String(context.settings?.resolution || (board ? "4K" : "1K"));
   const extras = content.split(/[。；;\n]/).filter((clause) => clause.trim() && !/角度|视角|视图|张|整版|拼图|拼版|布局/.test(clause) && !(context.settings?.showDimensions === false && containsDimensionInstruction(clause))).join("；").slice(0, 2000);
-  const presentation = context.assets?.some((asset) => asset.role === "style" && asset.tags?.includes("参考绘画风格")) ? DRAWING_STYLE_REFERENCE_CONSTRAINT : "保持同一产品的材质、颜色和光照表达，不做新的造型设计。";
+  const presentation = "视图任务默认延续主产品原图的表现形式、材质、颜色和光照；附加风格参考不能自动把写实产品转为绘画或线稿，只有用户明确要求转换表现形式时才转换。";
   return [
     `本次只生成 1 张图片，目标输出 ${resolution}。这是同一已完成产品的视角重建，不是外观改款。`,
-    `最高优先级：只能改变相机观察方向，严禁改变造型、增删部件或换一个产品。以产品自身前后左右坐标定义角度，不以屏幕左右定义。${sixViewSourceFidelityContract()}`,
+    `最高优先级：只能改变相机观察方向，严禁改变造型、增删部件或换一个产品。以产品自身前后左右坐标定义角度，不以屏幕左右定义。${sixViewSourceFidelityContract(board && requestedStandardViewCount(content, fallbackCount) === 6)}`,
     "主原图和辅助图仅作为同一产品的身份及可见结构依据，不是相机或版式模板。若参考图已有多个视图，只提取同一产品结构，绝不能照抄、裁切、镜像或复刻参考图的整板排布。隐藏面缺少依据时只做保守概念推断，不能凭空添加零件。",
     board
       ? `只输出${multiViewBoardLabel(content, fallbackCount)}，严格${requestedStandardViewCount(content, fallbackCount)}格：${views.map((view, viewIndex) => `第${viewIndex + 1}格=${view}（${cameraForView(view)}）`).join("；")}。每格仅一个完整产品，角度不重复；所有格统一比例、主体尺度、白色背景、光照和安全边距。`
@@ -352,8 +349,23 @@ function multiViewPrompt(context: ProviderContext, index: number, count: number)
   ].filter(Boolean).join("\n\n");
 }
 
+function explodedViewPrompt(context: ProviderContext) {
+  const notes = stripGeneratedPromptBoilerplate(String(context.settings?.userRequirements ?? context.userPrompt));
+  return [
+    `本次只生成一张概念爆炸图，目标输出 ${String(context.settings?.resolution || "1K")}。`,
+    EXPLODED_VIEW_CONTRACT,
+    "主产品原图决定真实可见的产品身份和分件；同一产品的辅助角度只补充有依据的结构。参考风格不能变成另一款产品或虚构装配件。",
+    notes ? `用户补充要求（不得解除以上结构真实性约束）：${notes}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
 function imageDesignRoute(context: ProviderContext, index: number, count: number) {
-  if (!isMultiViewContext(context)) return context.designPlan?.variantDirections[index] || `方案 ${index + 1}`;
+  if (context.settings?.transparentExport === true) return "透明背景 PNG";
+  if (context.settings?.explodedView === true) return "概念爆炸图";
+  if (!isMultiViewContext(context)) {
+    const overallIndex = Math.max(0, Math.trunc(Number(context.settings?.batchOffset) || 0)) + index;
+    return context.designPlan?.variantDirections[overallIndex] || `方案 ${overallIndex + 1}`;
+  }
   const content = String(context.settings?.userRequirements ?? context.userPrompt);
   const requestedBoard = context.settings?.multiViewBoard ?? context.settings?.freeChatMultiViewBoard;
   const fallbackCount = Number(context.settings?.freeChatViewCount ?? context.settings?.viewCount ?? count);
@@ -395,9 +407,10 @@ function aiHubMixGptImageSize(ratio: string) {
   return ratio === "3:4" || ratio === "9:16" ? "1024x1536" : "1536x1024";
 }
 
-function standardGptImageEditForm(model: string, prompt: string, size: string, references: ReferenceImage[]) {
+function standardGptImageEditForm(model: string, prompt: string, size: string, references: ReferenceImage[], transparentBackground = false) {
   const form = new FormData();
   for (const [key, value] of Object.entries({ model, prompt, n: "1", size, output_format: "png" })) form.set(key, value);
+  if (transparentBackground) form.set("background", "transparent");
   // OpenAI-compatible image edits use binary multipart input, rather than
   // GeekAI's base64 image array on the generations JSON endpoint.
   references.forEach((image, index) => {
@@ -460,6 +473,8 @@ function imageFailureSummary(failures: Array<{ index: number; reason: string }>)
 
 function optionPrompt(context: ProviderContext, index: number, count: number) {
   context = { ...context, userPrompt: stripGeneratedPromptBoilerplate(context.userPrompt) };
+  if (context.settings?.transparentExport === true) return TRANSPARENT_EXPORT_PROMPT;
+  if (context.settings?.explodedView === true) return explodedViewPrompt(context);
   const rawBoardItems = context.settings?.boardItems ?? context.settings?.freeChatBoardItems;
   const boardItems = context.settings?.generationMode === "free-chat"
     ? normalizeNaturalBoardItemCount(rawBoardItems)
@@ -480,27 +495,28 @@ function optionPrompt(context: ProviderContext, index: number, count: number) {
     validatePackagingAssets(context.assets || [], String(context.settings?.generationMode || "source"));
     const direction = context.settings?.designDirection;
     const dieline = isPackagingDielineDirection(direction);
-    return [context.userPrompt, `本次只生成一张完整${dieline ? "包装概念刀版展开图" : "包装展示图"}，批次第 ${index + 1}/${count} 张，目标输出 ${String(context.settings?.resolution || "1K")}。`,
+    const insert = isPackagingInsertDirection(direction);
+    return [context.userPrompt, `本次只生成一张完整${dieline ? "包装概念刀版展开图" : insert ? "保护性内衬设计图" : "包装展示图"}，批次第 ${index + 1}/${count} 张，目标输出 ${String(context.settings?.resolution || "1K")}。`,
       packagingModeContract(direction), packagingReferenceRules(context.assets || []), packagingBoardContract(boardItems, direction),
       context.designPlan ? `本张包装路线：${context.designPlan.variantDirections[index] || "设计适配原产品的包装"}。产品本体必须保留：${context.designPlan.mandatoryConstraints.join("；")}` : "",
-      dieline ? "画面主体仅是可阅读的平面展开刀版，不放产品渲染、立体包装效果图或展示场景。" : "每套包装与其对应的原产品应有清楚、合理的容纳与陈列关系；允许展示产品和包装两个对象，不能把包装变化画成产品造型变化。",
+      dieline ? "画面主体仅是可阅读的平面展开刀版，不放产品渲染、立体包装效果图或展示场景。" : insert ? "画面主体是内衬与原产品的承托装配关系，不把外盒改款或单独的产品渲染当作内衬方案。" : "每套包装与其对应的原产品应有清楚、合理的容纳与陈列关系；允许展示产品和包装两个对象，不能把包装变化画成产品造型变化。",
     ].filter(Boolean).join("\n\n");
   }
   if (isLocalSurfaceEditing({ agentId: context.agentId, generationMode: context.settings?.generationMode, workflowKind: context.settings?.workflowKind })) {
     const kind = context.settings?.workflowKind === "decal" ? "decal" : "cmf";
     const annotation = context.assets?.some((asset) => asset.role === "annotation");
-    return [context.userPrompt, `本次只生成一张完整图片，批次第 ${index + 1}/${count} 张，目标输出 ${String(context.settings?.resolution || "1K")}。`, localSurfaceContract(kind), identityContract, annotation ? "干净产品原图是全部画面的基准；对应标注图只用于定位本轮修改区域，最终完全去除标记。" : "本轮没有标注图，仅按文字定位修改区域，不得擅自改动整图。", context.designPlan ? `必须保留：${context.designPlan.mandatoryConstraints.join("；")}\n局部执行路线：${context.designPlan.variantDirections[index] || "只执行指定区域的表面修改"}` : "", hasBoard ? `${boardPrompt(boardItems, "local")}每个网格只能在同一指定区域内采用不同表面方案；其余壳体、功能件、轮廓、结构、视角和背景完全一致。` : "批次差异只能发生在已指定区域内；不规划整体配色，不额外修改其他壳体、功能件或背景，不新增视角和对比板，不改变任何结构或轮廓。"].filter(Boolean).join("\n\n");
+    return [context.userPrompt, `本次只生成一张完整图片，批次第 ${index + 1}/${count} 张，目标输出 ${String(context.settings?.resolution || "1K")}。`, localSurfaceContract(kind), identityContract, annotation ? "干净产品原图是全部画面的基准；对应标注图只用于定位本轮修改区域，最终完全去除标记。" : "本轮没有标注图，仅按文字定位修改区域，不得擅自改动整图。", context.designPlan ? `必须保留：${context.designPlan.mandatoryConstraints.join("；")}\n局部执行路线：${context.designPlan.variantDirections[index] || "只执行指定区域的表面修改"}` : "", hasBoard ? `${boardPrompt(boardItems, "local", (Math.max(0, Number(context.settings?.batchOffset) || 0) + index) * boardItems)}每个网格只能在同一指定区域内采用不同表面方案；其余壳体、功能件、轮廓、结构、视角和背景完全一致。` : "批次差异只能发生在已指定区域内；不规划整体配色，不额外修改其他壳体、功能件或背景，不新增视角和对比板，不改变任何结构或轮廓。"].filter(Boolean).join("\n\n");
   }
   if (isMultiViewContext(context)) return multiViewPrompt(context, index, count);
   if (context.settings?.workflowKind === "scene" || context.settings?.freeChatAction === "scene") {
-    return [context.userPrompt, `本次第 ${index + 1}/${count} 张，目标输出 ${String(context.settings?.resolution || "1K")}。`, "只处理场景呈现。产品原图的造型、轮廓、结构、比例、部件数量、配色、材质、贴花及标识都要原样保留。可根据场景调整环境、光照及人物使用姿态，但不得重画成另一款产品。场景参考图只提供环境，不提供替代产品。", identityContract, hasBoard ? `${boardPrompt(boardItems, "scene")}每个网格采用清楚可辨的不同使用场景，产品本体、角度和尺寸始终一致。` : ""].filter(Boolean).join("\n\n");
+    return [context.userPrompt, `本次第 ${index + 1}/${count} 张，目标输出 ${String(context.settings?.resolution || "1K")}。`, "只处理场景呈现。产品原图的造型、轮廓、结构、比例、部件数量、配色、材质、贴花及标识都要原样保留。可根据场景调整环境、光照及人物使用姿态，但不得重画成另一款产品。场景参考图只提供环境，不提供替代产品。", identityContract, hasBoard ? `${boardPrompt(boardItems, "scene", (Math.max(0, Number(context.settings?.batchOffset) || 0) + index) * boardItems)}每个网格采用清楚可辨的不同使用场景，产品本体、角度和尺寸始终一致。` : ""].filter(Boolean).join("\n\n");
   }
   if (isSurfaceOnly(context)) {
     const board = hasBoard;
     return [context.userPrompt, `本次只生成1张图片，批次第 ${index + 1}/${count} 张；目标输出 ${String(context.settings?.resolution || "1K")}。`,
       `本轮是表面编辑，用户明确要求优先于所有默认设计模板、重构滑杆、历史任务和方案差异规则。${SURFACE_ONLY_CONSTRAINT}`,
       identityContract,
-      board ? `${boardPrompt(boardItems, "cmf")}用户要求 ${boardItems} 种表面方案对比：每个网格复制完整原图视图板，各组保留原有视图数量、角度和布局，只改变指定表面处理；不得在每组内新增视角。每组都必须有可辨识的表面变化，不能把上传原图直接当成其中一组。` : "忠实保留主原图的完整画幅、全部已有视图、其顺序与布局。原图有五个视图就保留五个，不能套用单产品、六视图、镜头后移或重新排版模板。必须实际改变用户指定的可见表面，不能原样返回上传图片。",
+      board ? `${boardPrompt(boardItems, "cmf", (Math.max(0, Number(context.settings?.batchOffset) || 0) + index) * boardItems)}用户要求 ${boardItems} 种表面方案对比：每个网格复制完整原图视图板，各组保留原有视图数量、角度和布局，只改变指定表面处理；不得在每组内新增视角。每组都必须有可辨识的表面变化，不能把上传原图直接当成其中一组。` : "忠实保留主原图的完整画幅、全部已有视图、其顺序与布局。原图有五个视图就保留五个，不能套用单产品、六视图、镜头后移或重新排版模板。必须实际改变用户指定的可见表面，不能原样返回上传图片。",
       "辅助角度图仅补充结构；图案/贴花参考仅提供图形内容与用户指定的表面语言，不得替换目标产品。",
       context.designPlan ? `必须保留：${context.designPlan.mandatoryConstraints.join("；")}\n表面执行路线：${context.designPlan.variantDirections[index] || "仅执行用户本轮要求"}` : "",
       "贴花应贴合原曲面和透视，只覆盖用户允许的壳体表面，不覆盖黑色功能件、开孔、接口、镜片或用户禁止区域。用户没有要求时不添加文字、水印或新标识。",
@@ -529,7 +545,7 @@ function optionPrompt(context: ProviderContext, index: number, count: number) {
   const generationMode = String(context.settings?.generationMode || "source");
   const hasDrawingReference = context.assets?.some((asset) => asset.role === "style" && asset.tags?.includes("参考绘画风格"));
   const naturalIntent = userIntent(context);
-  const analysisOnlyFinalImage = usesAnalysisOnlyFinalImage({
+  const highReconstruction = usesHighReconstruction({
     agentId: context.agentId,
     generationMode,
     workflowKind: context.settings?.workflowKind,
@@ -551,13 +567,13 @@ function optionPrompt(context: ProviderContext, index: number, count: number) {
         ? `${sceneEnvironments[sceneIndex]} × ${lightingDirections[lightIndex]} × 第 ${overallIndex + 1} 组构图`
         : (fallbackLabels[overallIndex] ?? `第 ${overallIndex + 1} 张`);
   const differentiation = cmfBoard
-      ? `${boardPrompt(boardItems, "cmf")}本张是一张配色对比板，${boardItems} 个产品必须使用完全一致的观察角度、透视、姿态、轮廓、比例、结构、开孔、分件与部件位置，只改变颜色、材质、纹理、光泽和工艺分区，方便直接对比。`
+      ? `${boardPrompt(boardItems, "cmf", (Math.max(0, Number(context.settings?.batchOffset) || 0) + index) * boardItems)}本张是一张配色对比板，${boardItems} 个产品必须使用完全一致的观察角度、透视、姿态、轮廓、比例、结构、开孔、分件与部件位置，只改变颜色、材质、纹理、光泽和工艺分区，方便直接对比。`
     : isFreeCmf
       ? `本张只执行第 ${overallIndex + 1} 个配色方案。严格锁定原产品的观察角度、透视、姿态、轮廓、比例、结构、开孔、分件与部件位置，只改变颜色、材质、纹理、光泽和工艺分区；至少两处允许修改的可见表面须与原图明显不同，不能直接返回未改色原图，不得借配色之名改变造型。`
     : localBoard
-      ? `${boardPrompt(boardItems, "local")}每个网格都以同一张无标记产品原图为基准，只重新设计用户标注或文字指定的同一局部，且各格局部方案明显不同。未指定区域的轮廓、比例、结构、部件、CMF、构图、视角、背景和产品身份必须完全一致；最终彻底去除全部标记。`
+      ? `${boardPrompt(boardItems, "local", (Math.max(0, Number(context.settings?.batchOffset) || 0) + index) * boardItems)}每个网格都以同一张无标记产品原图为基准，只重新设计用户标注或文字指定的同一局部，且各格局部方案明显不同。未指定区域的轮廓、比例、结构、部件、CMF、构图、视角、背景和产品身份必须完全一致；最终彻底去除全部标记。`
     : variantBoard
-      ? `${boardPrompt(boardItems, "variants")}各方案使用完全一致的观察角度、透视、姿态、画面尺寸、背景和光线，但轮廓比例、主次体块、分件与标志性特征面必须一眼可辨地不同；上传原图仅作产品功能和结构参考，不能作为任何一个输出方案，不得只换颜色、材质、装饰或相机角度。`
+      ? `${boardPrompt(boardItems, "variants", (Math.max(0, Number(context.settings?.batchOffset) || 0) + index) * boardItems)}各方案使用完全一致的观察角度、透视、姿态、画面尺寸、背景和光线，但轮廓比例、主次体块、分件与标志性特征面必须一眼可辨地不同；上传原图仅作产品功能和结构参考，不能作为任何一个输出方案，不得只换颜色、材质、装饰或相机角度。`
     : isLocalEdit
       ? `本张只执行${hasLocalAnnotation ? "用户标注和文字" : "用户文字"}明确指向的局部修改。输入中的无标记产品原图是最终画面的严格基准；${hasLocalAnnotation ? "对应标注图只用于定位修改部位与理解用户意图。方框、圆框、圈线、箭头和标注文字只是位置提示，不是蒙版、零件、孔洞或装饰。" : "本轮没有标注图，按文字定位部件，不得声称已读取圈选；目标不清楚时不得擅自扩大修改范围。"}除指定局部外，主体轮廓、比例、结构、部件、CMF、构图、视角、背景和产品身份必须与干净原图视觉一致；修改区域的几何、材质、光影、透视和边缘必须与相邻结构连续融合，最终彻底去除全部标记。`
     : context.agentId === "appearance-variants"
@@ -569,9 +585,9 @@ function optionPrompt(context: ProviderContext, index: number, count: number) {
       ? `本张执行「${selectedDirection}」，但重构幅度为 0%，必须启用最高优先级的原造型锁定。逐像素级忠实遵循产品原图的外轮廓、长宽高比例、结构拓扑、全部边线、体块边界、分件、开孔、接口、按键和零部件位置；不得改变、增删或美化任何几何。${naturalIntent === "multi-view" ? "用户明确要求换角度，只改变观察方向，产品几何和全部结构保持同一；" : "用户未要求换角度，视角、镜头透视和姿态也完全不变；"}完整入镜优先于继承原图裁切：主体贴边时只能把镜头后移、等比例缩小主体并扩展背景。若原图为草图/线稿，只把这张完全相同的线稿转成${hasDrawingReference ? "符合指定绘画表现的完整产品图，不强制写实" : "真实产品渲染"}；若参考图提供配色或材质，只将被分类允许的CMF覆盖到锁定几何上。设计参考图绝不能替代产品原图。`
       : naturalIntent === "scoped-edit"
         ? `本张只执行用户明确点名的局部修改，独立路线为「${label}」。未点名区域的轮廓、比例、结构、部件数量、CMF、视角、光影和背景全部保持原图一致；禁止将局部修改扩展为整机重设计。`
-      : analysisOnlyFinalImage
+      : highReconstruction
         ? highReconstructionPrompt(reconstructionRatio, selectedDirection, label)
-        : `本张只执行用户单选的设计方向「${selectedDirection}」，批次独立路线为「${label}」。重构幅度按 ${reconstructionRatio}% 执行：1–29% 轻微调整；30–49% 中度改款；50–64% 强改款，必须至少同时改变主体轮廓比例、主次体块、分件和特征面中的三类，55% 不能只做小修小补。用户未明确要求换角度时，严格保持原图观察角度、镜头透视和产品姿态；禁止用镜头、背景、换色或材质冒充重构。`
+        : `本张只执行用户单选的设计方向「${selectedDirection}」，批次独立路线为「${label}」。${shapeVariationPrompt(reconstructionRatio)}用户未明确要求换角度时，严格保持原图观察角度、镜头透视和产品姿态；禁止用镜头、背景、换色或材质冒充重构。`
     : context.agentId === "render-studio"
       ? `本张场景方向为「${label}」，环境、构图、镜头距离和人物互动必须与同批其他场景明显不同，同时保持产品本体一致。`
       : context.agentId === "cmf-colorways"
@@ -596,11 +612,12 @@ function optionPrompt(context: ProviderContext, index: number, count: number) {
 前置视觉分析（所有上传图片均已参与）：
 产品类别：${context.designPlan.productCategory}
 核心功能：${context.designPlan.coreFunctions.join("；") || "依据品类保持"}
-必须保留：${context.designPlan.mandatoryConstraints.join("；") || (isLocalEdit ? "干净原图中除标注目标局部以外的全部可见内容" : "核心功能、安全与人体工学")}
+功能与用户明确约束：${context.designPlan.mandatoryConstraints.join("；") || (isLocalEdit ? "干净原图中除标注目标局部以外的全部可见内容" : "核心功能、安全与人体工学")}
+原图外观观察（不作为几何锁）：${context.designPlan.appearanceObservations?.join("；") || "按原图识别"}
 允许改变：${context.designPlan.mutableFeatures.join("；") || (isLocalEdit ? "仅允许改变标注明确指向的局部" : "非必要外观几何")}
 参考图设计语言：${context.designPlan.styleFingerprint.join("；") || "以用户文字要求为准"}
 禁止风格：${context.designPlan.negativeStyleConstraints.join("；") || "禁止无关机甲、装甲、尖锐切面和菱形装饰"}
-优先级：用户文字要求 > 设计参考图 > 执行方向 > 系统默认。` : "";
+身份依据：本轮主产品原图确定实际目标、品类、部件层级和功能；项目名称和历史文案仅辅助。用户本轮明确要求可改变被点名的结构，参考维度和重构幅度不能擅自替换目标对象。` : "";
   const framingRule = isLocalEdit
     ? "严格继承干净产品原图的画幅、主体位置、镜头距离、观察角度、透视、姿态和背景；不得重新构图、改变主体大小或通过换角度制造变化。"
     : "上传图片的裁切和画面占比不是输出构图要求；必须将镜头适当后移，让产品或局部主体完整位于画面中央，外接矩形距离上下左右边缘尽量不小于 12%，任何顶部、底座、支脚、轮子、扶手、工作端、把手、线缆和附件都不得接触或超出画面边界。";
@@ -610,11 +627,24 @@ function optionPrompt(context: ProviderContext, index: number, count: number) {
 目标输出 ${requestedResolution}，先追求原生细节。${framingRule}
 ${differentiation}
 ${compositionRule}
-如果参考图中包含被承载物、配件或操作部件，它们必须保持原有几何比例，不得拉伸、融化、扭曲、增生或与主体错误融合。产品结构应稳定、合理、可制造，边界清晰，不出现重复部件、断裂支撑或悬空连接。
+${referenceStrengthPrompt({ assets: context.assets || [], strength: context.settings?.referenceStrength, generationMode, workflowKind: context.settings?.workflowKind, agentId: context.agentId })}
+本产品已确认的功能接口、必要承载空间和用户明确锁定的尺寸保持成立；可变外壳比例和体块按当前重构档位执行。设计参考不能额外提供产品结构硬约束。不得出现融化、扭曲、增生或错误融合。产品结构应稳定、合理、可制造，边界清晰，不出现重复部件、断裂支撑或悬空连接。
 ${identityContract}
-${analysisOnlyFinalImage
-    ? "设计参考图的抽象语言已经写入前置视觉分析；只能依据这些文字化特征重新创作，禁止还原任何一张上传图片的具体主体、构图、文字、水印、标识或背景。"
+${highReconstruction
+    ? "正式生图中的原图始终确定目标产品身份与对象范围；同时读取参考图及分析出的抽象语言，将允许的特征转译到目标产品，禁止复制参考主体、文字、水印、标识或背景。"
     : "如果有参考图，只将用户允许的抽象设计语言应用到主产品原图所代表的目标产品；主要参考图优先，其他参考图只补充不冲突的线索。不得把参考图主体、文字、水印、标识或背景复制到结果中。"}若参考图圆润、有机或柔和，禁止无故生成机甲、装甲、尖锐切面、硬朗菱形纹或碎片化模块。`;
+}
+
+function imagePrompt(context: ProviderContext, index: number, count: number) {
+  const option = optionPrompt(context, index, count);
+  const highBoard = normalizeBoardItemCount(context.settings?.boardItems ?? context.settings?.freeChatBoardItems) > 1 && usesHighReconstruction({ agentId: context.agentId, generationMode: context.settings?.generationMode, workflowKind: context.settings?.workflowKind, freeChatAction: context.settings?.freeChatAction, reconstructionRatio: context.settings?.reconstructionRatio, naturalIntent: userIntent(context), surfaceOnly: isSurfaceOnly(context), hasAnnotation: Boolean(context.assets?.some((asset) => asset.role === "annotation" || asset.role === "mask")) });
+  const routeIndex = Math.max(0, Math.trunc(Number(context.settings?.batchOffset) || 0)) + index;
+  const base = highBoard ? `${option}\n\n${highReconstructionPrompt(Number(context.settings?.reconstructionRatio), String(context.settings?.designDirection || "造型焕新"), context.designPlan?.variantDirections[routeIndex] || "围绕本轮允许的外观变化设计")}` : option;
+  const overallIndex = Math.max(0, Math.trunc(Number(context.settings?.batchOffset) || 0)) + index;
+  const route = context.designPlan?.variantDirections[overallIndex];
+  if (context.designPlan && !route) throw new ProviderError("本张独立设计路线缺失，请重新整理本批要求；尚未发起出图。", "geekai", false);
+  const prompt = route ? `${base}\n\n本张唯一执行路线（第${overallIndex + 1}张）：${route}\n仅执行本张路线；同图多个子方案在该路线和原图结构约束内分别设计，不执行本批其他图片路线。` : base;
+  return context.settings?.transparentBackground === true ? `${prompt}\n\n${TRANSPARENT_BACKGROUND_PROMPT}` : prompt;
 }
 
 function parseImageDataUrl(mimeType: string | undefined, data: string | undefined) {
@@ -651,12 +681,17 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
   async generateText(context: ProviderContext): Promise<TextOutput> {
     const model = pickConfig("GEEKAI_TEXT_MODEL", "GEEKAI_TEXT_MODEL");
     if (!this.isConfigured() || !model) throw new ProviderError("GeekAI 文本模型尚未配置", this.name, false);
-    const fastEnhancement = context.settings?.task === "prompt-enhancement";
-    const attempts = fastEnhancement ? 1 : 2;
+    const task = String(context.settings?.task || "");
+    const fastEnhancement = task.startsWith("prompt-enhancement");
+    const structuredPlanning = fastEnhancement || task === "design-analysis" || task === "design-analysis-and-planning";
+    const attempts = 2;
+    const planningCount = Math.max(1, Math.min(100, Number(context.settings?.outputCount) || 1));
+    const planningTokens = planningTokenBudget(planningCount);
     const apiKey = pickConfig("GEEKAI_API_KEY", "GEEKAI_API_KEY");
     let lastError: unknown;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
+        context.onTextAttempt?.();
         const response = await providerFetch(v1ApiUrl("chat/completions"), {
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -667,23 +702,26 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
               { role: "user", content: [{ type: "text", text: context.userPrompt }, ...assetInputs(context)] },
             ],
             temperature: fastEnhancement ? 0.2 : 0.45,
-            ...(fastEnhancement ? { max_tokens: 700 } : {}),
+            ...(structuredPlanning ? { max_tokens: planningTokens } : {}),
           }),
-          signal: requestSignal(fastEnhancement ? 25_000 : 150_000, context.signal),
+          signal: requestSignal(structuredPlanning ? (attempt === 1 ? 60_000 : 45_000) : 150_000, context.signal),
         });
         if (!response.ok) throw new ProviderError(await parseError(response, "文字分析"), this.name, response.status === 429 || response.status >= 500, response.status);
         const payload = await parseJsonPayload<{ choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }> }>(response, this.name, "文字模型");
         const raw = payload.choices?.[0]?.message?.content;
-        const text = typeof raw === "string" ? raw : raw?.map((part) => part.text ?? "").join("\n") ?? "";
+        const text = typeof raw === "string" ? raw : raw?.map((part) => part.text ?? "").join("") ?? "";
         if (!text.trim()) throw new ProviderError("GeekAI 返回了空文本", this.name, true);
         return { text, provider: this.name, model };
       } catch (error) {
         lastError = error;
+        if (context.signal?.aborted) throw error;
         if (error instanceof ProviderError && !error.retryable) throw error;
+        if (structuredPlanning && error instanceof ProviderError) throw error;
+        if (structuredPlanning && !transientPlanningError(error)) throw error;
         if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 700));
       }
     }
-    const message = lastError instanceof Error && !/timeout|aborted/i.test(`${lastError.name} ${lastError.message}`)
+    const message = structuredPlanning ? planningNetworkMessage(lastError, attempts).replace("本次尚未开始生图", context.settings?.planningContinuation ? "后续图片尚未提交，首批结果会保留" : "本次尚未开始生图") : lastError instanceof Error && !/timeout|aborted/i.test(`${lastError.name} ${lastError.message}`)
       ? lastError.message
       : "文字模型响应超时，已自动重试";
     throw new ProviderError(message, this.name, true);
@@ -692,12 +730,24 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
   async generateImages(context: ProviderContext, count: number): Promise<ImageOutput> {
     const model = this.configuredImageModel();
     if (!this.isConfigured() || !model) throw new ProviderError("GeekAI 图像模型尚未配置", this.name, false);
+    if (context.settings?.transparentExport === true && context.settings?.transparentBackground !== true) {
+      throw new ProviderError("透明 PNG 导出需要启用真实透明背景；本次未发起付费请求。", this.name, false);
+    }
+    if (context.settings?.transparentBackground === true && !supportsTransparentBackgroundModel(pickConfig("GEEKAI_PROVIDER_TYPE", "GEEKAI_PROVIDER_TYPE", "geekai"), model)) {
+      throw new ProviderError("当前图片模型不支持真实透明背景。请在模型设置中选择 GPT Image 2.5 Flare 或 Sunburst 后重试；本次未发起付费请求。", this.name, false);
+    }
     if (isPackagingWorkflow(context.settings?.workflowKind)) validatePackagingAssets(context.assets || [], String(context.settings?.generationMode || "source"));
     if (isDetailWorkflow(context.settings?.workflowKind)) validateDetailAssets(context.assets || [], String(context.settings?.generationMode || "source"));
     if (pickConfig("GEEKAI_PROVIDER_TYPE", "GEEKAI_PROVIDER_TYPE", "geekai") === "relayrouter" && !isRelayRouterImageModel(model)) {
       throw new ProviderError("RelayRouter 当前仅开放已适配的 Gemini 图片、GPT Image 2 与 2.5 型号；本次未发起付费请求。", this.name, false);
     }
     const targetCount = Math.max(1, Math.min(Math.trunc(count || 1), 100));
+    if ((context.settings?.explodedView === true || context.settings?.transparentExport === true) && targetCount !== 1) {
+      throw new ProviderError("概念爆炸图和透明背景导出每次只生成一张图片，请检查数量；本次未发起付费请求。", this.name, false);
+    }
+    if ((context.settings?.explodedView === true || context.settings?.transparentExport === true) && !(context.assets || []).some((asset) => asset.type.startsWith("image/") && (asset.role === "structure" || asset.role === "result"))) {
+      throw new ProviderError("请先选择一张产品原图，再生成概念爆炸图或透明背景 PNG；本次未发起付费请求。", this.name, false);
+    }
     if (useGeminiNativeImageApi(model)) return this.generateGeminiImages(context, model, targetCount);
     if (useAiHubMixImageApi(model)) return this.generateAiHubMixImages(context, model, targetCount);
     return this.generateOpenAiImages(context, model, targetCount);
@@ -709,7 +759,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
     const relayRouter = pickConfig("GEEKAI_PROVIDER_TYPE", "GEEKAI_PROVIDER_TYPE", "geekai") === "relayrouter";
     let completed = 0;
     const batch = await mapWithConcurrency<ImageTaskResult>(count, imageConcurrency(), async (index) => {
-      const prompt = optionPrompt(context, index, count);
+      const prompt = imagePrompt(context, index, count);
       const response = await providerFetch(v1BetaUrl(`models/${encodeURIComponent(model)}:generateContent`), {
         method: "POST",
         headers: {
@@ -724,7 +774,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
             parts: [
               { text: references.length
                 ? `${prompt}\n\n以下是正式生图阶段筛选出的关键图片。每张图片前的角色说明是硬约束，绝不能把设计参考图当作产品原图：`
-                : `${prompt}\n\n本次正式生图没有附带上传图片的原始像素；严格依据前置视觉分析和本张设计路线生成。` },
+                : `${prompt}\n\n本次没有图片输入；仅按明确的文字产品定义与本张路线生成，不得声称已读取原图。` },
               ...references.flatMap((image, referenceIndex) => [
                 { text: `图片 ${referenceIndex + 1}：${referenceRoleLabel(image, context)}；文件名=${image.name}` },
                 relayRouter ? { inline_data: { mime_type: image.mimeType, data: image.data } } : { inlineData: { mimeType: image.mimeType, data: image.data } },
@@ -743,9 +793,14 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
       const payload = await parseJsonPayload<GeminiGenerateResponse>(response, this.name, "Gemini 图片模型");
       const { image, text } = imageFromResponse(payload);
       if (!image) throw emptyImageError(payload, this.name, "Gemini 图片模型");
+      const returned = { index: Math.max(0, Number(context.settings?.batchOffset) || 0) + index, prompt, designRoute: imageDesignRoute(context, index, count), revisedPrompt: imageUrlFromText(text) ? undefined : text || undefined };
+      if (context.onImage) {
+        try { await context.onImage({ imageUrls: [image], provider: this.name, model, variants: [returned] }, returned.index); }
+        catch { /* Preserve the paid response; the orchestrator can retry local saving. */ }
+      }
       completed += 1;
       context.onProgress?.({ stage: "generating", label: `正在生成第 ${completed}/${count} 张方案`, completed, total: count });
-      return { image, prompt, designRoute: imageDesignRoute(context, index, count), revisedPrompt: imageUrlFromText(text) ? undefined : text || undefined };
+      return { image, ...returned };
     }, context.signal);
     const results = batch.results;
     return {
@@ -754,7 +809,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
       model,
       failureSummary: imageFailureSummary(batch.failures),
       revisedPrompt: results.find((result) => result.revisedPrompt)?.revisedPrompt,
-      variants: results.map((result) => ({ prompt: result.prompt, designRoute: result.designRoute, seed: result.seed })),
+      variants: results.map((result) => ({ index: result.index, prompt: result.prompt, designRoute: result.designRoute, seed: result.seed })),
     };
   }
 
@@ -762,15 +817,17 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
     const references = await imageReferences(context);
     const apiKey = pickConfig("GEEKAI_API_KEY", "GEEKAI_API_KEY");
     const aiHubMixGpt = useAiHubMixGptImageApi(model);
-    const relayRouterGpt = pickConfig("GEEKAI_PROVIDER_TYPE", "GEEKAI_PROVIDER_TYPE", "geekai") === "relayrouter" && isRelayRouterImageModel(model);
-    const standardGpt = aiHubMixGpt || relayRouterGpt;
+    const providerType = pickConfig("GEEKAI_PROVIDER_TYPE", "GEEKAI_PROVIDER_TYPE", "geekai");
+    const relayRouterGpt = providerType === "relayrouter" && isRelayRouterImageModel(model);
+    const directGpt = providerType === "openai-compatible" && context.settings?.transparentBackground === true && /^gpt-image-2\.5-/i.test(model);
+    const standardGpt = aiHubMixGpt || relayRouterGpt || directGpt;
     const standardGptEdit = standardGpt && references.length > 0;
     const size = standardGpt ? aiHubMixGptImageSize(aspectRatio(context)) : imageSizeFor(model, aspectRatio(context));
     let completed = 0;
     const batch = await mapWithConcurrency<ImageTaskResult>(count, imageConcurrency(), async (index) => {
-      const basePrompt = optionPrompt(context, index, count);
+      const basePrompt = imagePrompt(context, index, count);
       const finalPrompt = references.length
-        ? `${basePrompt}\n\n图片已按角色排序，角色优先于上传顺序：\n${references.map((image, referenceIndex) => `图片 ${referenceIndex + 1}：${referenceRoleLabel(image, context)}；文件名=${image.name}`).join("\n")}\n${isDetailWorkflow(context.settings?.workflowKind) ? "产品原图只锁定产品身份和外观；按本轮详情图方向重新构图和布光，不继承原图背景、画幅或相机布局，不做半透明叠图。" : isPackagingWorkflow(context.settings?.workflowKind) ? "产品原图锁定被包装产品的形态和尺度，不锁定包装展示构图；参考图只提供抽象包装语言，包装容器可以新增。" : isMultiViewContext(context) ? "主产品原图只锁定产品身份和结构；必须使用本次唯一目标角度或指定整版角度，不继承原图构图、相机和排布。" : "主产品原图决定构图和主要视角；辅助角度只补充同一产品的结构。"}设计参考图绝不能成为目标产品，只能迁移被用户允许的参考维度。`
+        ? `${basePrompt}\n\n图片已按角色排序，角色优先于上传顺序：\n${references.map((image, referenceIndex) => `图片 ${referenceIndex + 1}：${referenceRoleLabel(image, context)}；文件名=${image.name}`).join("\n")}\n${context.settings?.transparentExport === true ? "本次只按输入产品图片抠去背景，产品本身不改变。" : context.settings?.explodedView === true ? "按有依据的分件生成一组概念爆炸结构，不把缺失的内部资料当成真实装配。" : isDetailWorkflow(context.settings?.workflowKind) ? "产品原图只锁定产品身份和外观；按本轮详情图方向重新构图和布光，不继承原图背景、画幅或相机布局，不做半透明叠图。" : isPackagingWorkflow(context.settings?.workflowKind) ? "产品原图锁定被包装产品的形态和尺度，不锁定包装展示构图；参考图只提供抽象包装语言，包装容器可以新增。" : isMultiViewContext(context) ? "主产品原图只锁定产品身份和结构；必须使用本次唯一目标角度或指定整版角度，不继承原图构图、相机和排布。" : "主产品原图决定构图和主要视角；辅助角度只补充同一产品的结构。"}设计参考图绝不能成为目标产品，只能迁移被用户允许的参考维度。`
         : basePrompt;
       const body: Record<string, unknown> = {
         model,
@@ -778,13 +835,14 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
         n: 1,
         size,
         ...synchronousImageExtension(),
-        ...(standardGpt ? { output_format: "png" } : {}),
+        ...(standardGpt || context.settings?.transparentBackground === true ? { output_format: "png" } : {}),
+        ...(context.settings?.transparentBackground === true ? { background: "transparent" } : {}),
         ...(!standardGpt && references.length ? { image: references.map((image) => image.data) } : {}),
       };
       const response = await providerFetch(v1ApiUrl(standardGptEdit ? "images/edits" : "images/generations"), {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, ...(standardGptEdit ? {} : { "Content-Type": "application/json" }) },
-        body: standardGptEdit ? standardGptImageEditForm(model, finalPrompt, size, references) : JSON.stringify(body),
+        body: standardGptEdit ? standardGptImageEditForm(model, finalPrompt, size, references, context.settings?.transparentBackground === true) : JSON.stringify(body),
         // AIHubMix documents GPT Image 2 generations taking >5 minutes and
         // recommends >=10 minutes. Timeout must not issue another paid call.
         signal: requestSignal(standardGpt ? 600_000 : 180_000, context.signal),
@@ -795,9 +853,14 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
       const prompt = (payload.data ?? []).map((item) => item.revised_prompt).find(Boolean);
       const seed = (payload.data ?? []).map((item) => item.seed).find((value) => value !== undefined);
       if (!image) throw emptyImageError(payload, this.name, "图片模型");
+      const returned = { index: Math.max(0, Number(context.settings?.batchOffset) || 0) + index, prompt: finalPrompt, designRoute: imageDesignRoute(context, index, count), revisedPrompt: prompt, seed };
+      if (context.onImage) {
+        try { await context.onImage({ imageUrls: [image], provider: this.name, model, variants: [returned] }, returned.index); }
+        catch { /* Preserve the paid response; the orchestrator can retry local saving. */ }
+      }
       completed += 1;
       context.onProgress?.({ stage: "generating", label: `正在生成第 ${completed}/${count} 张方案`, completed, total: count });
-      return { image, prompt: finalPrompt, designRoute: imageDesignRoute(context, index, count), revisedPrompt: prompt, seed };
+      return { image, ...returned };
     }, context.signal);
     const results = batch.results;
     return {
@@ -806,7 +869,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
       model,
       failureSummary: imageFailureSummary(batch.failures),
       revisedPrompt: results.find((result) => result.revisedPrompt)?.revisedPrompt,
-      variants: results.map((result) => ({ prompt: result.prompt, designRoute: result.designRoute, seed: result.seed })),
+      variants: results.map((result) => ({ index: result.index, prompt: result.prompt, designRoute: result.designRoute, seed: result.seed })),
     };
   }
 
@@ -815,7 +878,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
     const apiKey = pickConfig("GEEKAI_API_KEY", "GEEKAI_API_KEY");
     let completed = 0;
     const batch = await mapWithConcurrency<ImageTaskResult>(count, imageConcurrency(), async (index) => {
-      const prompt = `${optionPrompt(context, index, count)}${references.length ? `\n\n参考图角色（不得混淆）：\n${references.map((image, referenceIndex) => `图片 ${referenceIndex + 1}：${referenceRoleLabel(image, context)}；文件名=${image.name}`).join("\n")}` : ""}`;
+      const prompt = `${imagePrompt(context, index, count)}${references.length ? `\n\n参考图角色（不得混淆）：\n${references.map((image, referenceIndex) => `图片 ${referenceIndex + 1}：${referenceRoleLabel(image, context)}；文件名=${image.name}`).join("\n")}` : ""}`;
       // AIHubMix publishes Gemini image output through multimodal Chat Completions.
       // https://aihubmix.com/model/gemini-nano-banana-2.1
       const response = await providerFetch(v1ApiUrl("chat/completions"), {
@@ -841,9 +904,14 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
       const payload = await parseJsonPayload<GeminiGenerateResponse>(response, this.name, "AIHubMix 图片模型");
       const { image, text } = imageFromResponse(payload);
       if (!image) throw emptyImageError(payload, this.name, "AIHubMix 图片模型");
+      const returned = { index: Math.max(0, Number(context.settings?.batchOffset) || 0) + index, prompt, designRoute: imageDesignRoute(context, index, count), revisedPrompt: imageUrlFromText(text) ? undefined : text || undefined };
+      if (context.onImage) {
+        try { await context.onImage({ imageUrls: [image], provider: this.name, model, variants: [returned] }, returned.index); }
+        catch { /* Preserve the paid response; the orchestrator can retry local saving. */ }
+      }
       completed += 1;
       context.onProgress?.({ stage: "generating", label: `正在生成第 ${completed}/${count} 张方案`, completed, total: count });
-      return { image, prompt, designRoute: imageDesignRoute(context, index, count), revisedPrompt: imageUrlFromText(text) ? undefined : text || undefined };
+      return { image, ...returned };
     }, context.signal);
     const results = batch.results;
     return {
@@ -852,7 +920,7 @@ export class GeekAiProvider implements TextProvider, ImageProvider {
       model,
       failureSummary: imageFailureSummary(batch.failures),
       revisedPrompt: results.find((result) => result.revisedPrompt)?.revisedPrompt,
-      variants: results.map((result) => ({ prompt: result.prompt, designRoute: result.designRoute, seed: result.seed })),
+      variants: results.map((result) => ({ index: result.index, prompt: result.prompt, designRoute: result.designRoute, seed: result.seed })),
     };
   }
 }

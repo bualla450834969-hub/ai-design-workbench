@@ -4,21 +4,26 @@ import { requireSession } from "@/lib/auth/session";
 import { apiError, noStoreJson } from "@/lib/http";
 import { store } from "@/lib/store";
 import { migrateLegacyBoardItemCount } from "@/lib/generation-board";
+import { FREE_CHAT_MEMORY_LIMIT } from "@/lib/free-chat-memory";
 export const runtime = "nodejs";
 
 const workspaceStateSchema = z.object({
   selectedAssets: z.array(z.string()).optional(),
   agentId: z.enum(["appearance-variants", "local-retouch"]).optional(),
-  workflowKind: z.enum(["shape", "view", "cmf", "decal", "scene", "packaging", "detail"]).optional(),
-  overallWorkflowKind: z.enum(["shape", "view", "cmf", "decal", "scene", "packaging", "detail"]).optional(),
+  workflowKind: z.enum(["shape", "view", "cmf", "decal", "scene", "packaging", "detail", "video"]).optional(),
+  overallWorkflowKind: z.enum(["shape", "view", "cmf", "decal", "scene", "packaging", "detail", "video"]).optional(),
   designDirections: z.record(z.string(), z.string()).optional(),
   specifiedAngle: z.string().max(160).optional(),
   showDimensions: z.boolean().optional(),
   reconstructionRatio: z.number().int().min(0).max(100).optional(),
+  referenceStrength: z.number().int().min(0).max(100).optional(),
   outputCount: z.number().int().min(1).max(100).optional(),
   boardItems: z.preprocess(migrateLegacyBoardItemCount, z.union([z.literal(1), z.literal(4), z.literal(9)])).optional(),
   resolution: z.enum(["1K", "2K", "4K"]).optional(),
   input: z.string().max(20_000).optional(),
+  organizedPrompt: z.string().max(20_000).optional(),
+  unorganizedInput: z.string().max(20_000).optional(),
+  organizedContext: z.string().max(10_000).optional(),
   generationMode: z.enum(["source", "reference", "text", "local"]).optional(),
   aspectRatio: z.enum(["auto", "1:1", "4:3", "3:4", "16:9", "9:16"]).optional(),
   workspaceMode: z.enum(["parameter", "free-chat"]).optional(),
@@ -45,9 +50,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const user = await requireSession(request);
     const { id } = await context.params;
     const body = await request.json();
-    const update: { name?: string; description?: string; workspaceState?: Record<string, unknown> } = {};
+    const update: { name?: string; description?: string; freeChatMemory?: string; workspaceState?: Record<string, unknown> } = {};
     if (body.name !== undefined) update.name = String(body.name);
     if (body.description !== undefined) update.description = String(body.description);
+    if (body.freeChatMemory !== undefined) update.freeChatMemory = z.string().max(FREE_CHAT_MEMORY_LIMIT).parse(body.freeChatMemory);
     if (body.workspaceState !== undefined) update.workspaceState = workspaceStateSchema.parse(body.workspaceState);
     const project = store.updateProject(user.id, id, update);
     return noStoreJson({ project });
